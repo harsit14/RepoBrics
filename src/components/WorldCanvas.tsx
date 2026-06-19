@@ -77,6 +77,7 @@ export function WorldCanvas({ manifest, isLoading }: Props) {
         </group>
         {manifest ? <StreetCameraControls enabled={viewMode === "street"} manifest={manifest} /> : null}
         {manifest ? <FlyCameraControls enabled={viewMode === "fly"} manifest={manifest} /> : null}
+        {manifest ? <CameraAnchorReporter /> : null}
         <OrbitControls
           makeDefault
           enabled={viewMode === "overview"}
@@ -118,6 +119,28 @@ function WorldScene({ manifest, theme }: { manifest: WorldManifest; theme: Scene
       {showDependencies ? <ConnectionLayer manifest={manifest} theme={theme} /> : null}
     </>
   );
+}
+
+function CameraAnchorReporter() {
+  const { camera } = useThree();
+  const controls = useThree((state) => state.controls) as unknown as { target?: THREE.Vector3 } | null;
+  const last = useRef(new THREE.Vector3(Number.NaN, Number.NaN, Number.NaN));
+
+  useFrame(() => {
+    const viewMode = useWorldStore.getState().viewMode;
+    const source = viewMode === "overview" && controls?.target ? controls.target : camera.position;
+    if (last.current.distanceTo(source) < 2) {
+      return;
+    }
+    last.current.copy(source);
+    useWorldStore.getState().setViewportAnchor({
+      x: roundTo(source.x, 1),
+      y: roundTo(source.y, 1),
+      z: roundTo(source.z, 1)
+    });
+  });
+
+  return null;
 }
 
 const STUD_RADIUS = 0.2;
@@ -785,12 +808,28 @@ function BuildingMesh({ building, theme }: { building: Building; theme: SceneThe
   const selection = useWorldStore((state) => state.selection);
   const colorByLanguage = useWorldStore((state) => state.colorByLanguage);
   const highlightComplexity = useWorldStore((state) => state.highlightComplexity);
+  const historyFocusPaths = useWorldStore((state) => state.historyFocusPaths);
   const [hovered, setHovered] = useState(false);
   const selected = selection?.kind === "building" && selection.id === building.id;
+  const historyFocused = historyFocusPaths.includes(building.path);
   const neon = theme === "neon";
   const rawColor = colorByLanguage ? building.color : "#94a3b8";
   const color = neon ? neonize(rawColor) : rawColor;
-  const glow = neon ? (selected ? 0.78 : hovered ? 0.46 : 0.18) : selected ? 0.26 : hovered ? 0.13 : 0;
+  const glow = neon
+    ? selected
+      ? 0.78
+      : historyFocused
+        ? 0.68
+        : hovered
+          ? 0.46
+          : 0.18
+    : selected
+      ? 0.26
+      : historyFocused
+        ? 0.22
+        : hovered
+          ? 0.13
+          : 0;
   const accent = building.complexity >= 8 ? "#eb5757" : building.complexity >= 5 ? "#f2994a" : "#27ae60";
   const windowRows = useMemo(() => buildingWindowRows(building.dimensions.height), [building.dimensions.height]);
   const profile = useMemo(() => buildingProfile(building), [building]);
@@ -841,6 +880,12 @@ function BuildingMesh({ building, theme }: { building: Building; theme: SceneThe
         <mesh position={[0, building.dimensions.height / 2 + 0.025, 0]}>
           <boxGeometry args={[building.dimensions.width * 0.92, 0.06, building.dimensions.depth * 0.92]} />
           <meshStandardMaterial color={neon ? neonize(accent) : accent} roughness={neon ? 0.22 : 0.48} emissive={neon ? neonize(accent) : "#000000"} emissiveIntensity={neon ? 0.9 : 0} />
+        </mesh>
+      ) : null}
+      {historyFocused ? (
+        <mesh position={[0, building.dimensions.height / 2 + 0.12, 0]}>
+          <boxGeometry args={[building.dimensions.width * 1.08, 0.08, building.dimensions.depth * 1.08]} />
+          <meshStandardMaterial color={neon ? "#facc15" : "#f59e0b"} roughness={neon ? 0.18 : 0.36} emissive={neon ? "#facc15" : "#fff7cc"} emissiveIntensity={neon ? 1.05 : 0.32} transparent opacity={0.82} />
         </mesh>
       ) : null}
       {selected || hovered ? <SceneLabel position={{ x: 0, y: building.dimensions.height / 2 + 0.58, z: 0 }}>{building.name}</SceneLabel> : null}

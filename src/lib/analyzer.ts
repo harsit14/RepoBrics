@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import type {
   Building,
   Connection,
+  AnalysisArtifacts,
   Dimensions,
   District,
   Landmark,
@@ -19,6 +20,8 @@ import type {
 } from "@/types/world";
 import { languageForPath, sortLanguageStats } from "@/lib/language";
 import { parseGitHubUrl } from "@/lib/github";
+import { analyzeRepositoryHistory } from "@/lib/history";
+import { createWorldArtifacts } from "@/lib/worldArtifacts";
 
 const execFileAsync = promisify(execFile);
 const MAX_RENDERED_FILES = 1_500;
@@ -74,13 +77,39 @@ type FileRecord = {
   landmarkKind?: LandmarkKind;
 };
 
-type AnalyzeOptions = {
+export type AnalyzeOptions = {
   generatedAt?: string;
   maxRenderedFiles?: number;
   repoInfo?: Partial<RepoInfo>;
+  includeHistory?: boolean;
+  maxHistoryFrames?: number;
 };
 
-export async function analyzeGitHubRepository(repoUrl: string): Promise<WorldManifest> {
+export async function analyzeGitHubRepository(repoUrl: string, options: AnalyzeOptions = {}): Promise<WorldManifest> {
+  const cloned = await cloneGitHubRepository(repoUrl, options);
+  return analyzeRepositoryPath(cloned.repoPath, {
+    ...options,
+    repoInfo: await repoInfoForClonedRepository(cloned.repoPath, cloned.repoInfo, options.repoInfo)
+  });
+}
+
+export async function analyzeGitHubRepositoryArtifacts(repoUrl: string, options: AnalyzeOptions = {}): Promise<AnalysisArtifacts> {
+  const cloned = await cloneGitHubRepository(repoUrl, options);
+  return analyzeRepositoryArtifacts(cloned.repoPath, {
+    ...options,
+    repoInfo: await repoInfoForClonedRepository(cloned.repoPath, cloned.repoInfo, options.repoInfo)
+  });
+}
+
+export async function analyzeRepositoryArtifacts(repoPath: string, options: AnalyzeOptions = {}): Promise<AnalysisArtifacts> {
+  const manifest = await analyzeRepositoryPath(repoPath, options);
+  const historyFrames = options.includeHistory
+    ? await analyzeRepositoryHistory(repoPath, { maxFrames: options.maxHistoryFrames })
+    : [];
+  return createWorldArtifacts(manifest, historyFrames);
+}
+
+async function cloneGitHubRepository(repoUrl: string, options: AnalyzeOptions): Promise<{ repoPath: string; repoInfo: Omit<RepoInfo, "branch"> }> {
   const parsed = parseGitHubUrl(repoUrl);
   const cacheKey = crypto.createHash("sha256").update(parsed.url).digest("hex").slice(0, 16);
   const repoPath = path.join(CACHE_ROOT, cacheKey);
@@ -89,7 +118,8 @@ export async function analyzeGitHubRepository(repoUrl: string): Promise<WorldMan
   await fs.mkdir(CACHE_ROOT, { recursive: true });
 
   try {
-    await execFileAsync("git", ["clone", "--depth", "1", "--single-branch", parsed.cloneUrl, repoPath], {
+    const depth = options.includeHistory ? String(clamp(options.maxHistoryFrames ?? 60, 2, 250)) : "1";
+    await execFileAsync("git", ["clone", "--depth", depth, "--single-branch", parsed.cloneUrl, repoPath], {
       timeout: 60_000,
       maxBuffer: 1024 * 1024
     });
@@ -97,17 +127,26 @@ export async function analyzeGitHubRepository(repoUrl: string): Promise<WorldMan
     throw new RepoUnavailableError();
   }
 
-  const branch = await currentBranch(repoPath);
-  return analyzeRepositoryPath(repoPath, {
-    repoInfo: {
-      ...parsed,
-      branch
-    }
-  });
+  return { repoPath, repoInfo: parsed };
+}
+
+async function repoInfoForClonedRepository(
+  repoPath: string,
+  parsed: Omit<RepoInfo, "branch">,
+  overrides: Partial<RepoInfo> = {}
+): Promise<Partial<RepoInfo>> {
+  return {
+    ...parsed,
+    ...overrides,
+    branch: overrides.branch ?? (await currentBranch(repoPath))
+  };
 }
 
 export async function analyzeRepositoryPath(repoPath: string, options: AnalyzeOptions = {}): Promise<WorldManifest> {
-  const repoInfo = normalizeRepoInfo(repoPath, options.repoInfo);
+  const repoInfo = normalizeRepoInfo(repoPath, {
+    ...(options.repoInfo ?? {}),
+    branch: options.repoInfo?.branch ?? (await currentBranch(repoPath))
+  });
   const allFiles = (await listTrackedFiles(repoPath)).filter(shouldIncludePath).sort();
   if (allFiles.length > MAX_TRACKED_FILES) {
     throw new RepoTooLargeError(`This repo has ${allFiles.length} tracked files; the MVP limit is ${MAX_TRACKED_FILES}.`);

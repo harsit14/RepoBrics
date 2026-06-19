@@ -3,7 +3,7 @@ import { InvalidRepoUrlError } from "@/lib/github";
 import { analyzeGitHubRepository, RepoTooLargeError, RepoUnavailableError } from "@/lib/analyzer";
 
 export type AnalyzeHandlerDeps = {
-  analyze?: (repoUrl: string) => Promise<WorldManifest>;
+  analyze?: (repoUrl: string, options?: Pick<AnalyzeRequest, "includeHistory" | "maxHistoryFrames" | "maxRenderedFiles">) => Promise<WorldManifest>;
 };
 
 export type AnalyzeHandlerResult =
@@ -19,7 +19,11 @@ export async function handleAnalyzeRequest(
   }
 
   try {
-    const manifest = await (deps.analyze ?? analyzeGitHubRepository)(input.repoUrl);
+    const manifest = await (deps.analyze ?? analyzeGitHubRepository)(input.repoUrl, {
+      includeHistory: input.includeHistory,
+      maxHistoryFrames: input.maxHistoryFrames,
+      maxRenderedFiles: input.maxRenderedFiles
+    });
     return { status: 200, body: manifest };
   } catch (error) {
     if (error instanceof InvalidRepoUrlError) {

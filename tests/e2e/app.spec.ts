@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
 import { PNG } from "pngjs";
+import { demoManifest } from "../../src/lib/demoManifest";
+import { createWorldArtifacts } from "../../src/lib/worldArtifacts";
+import type { HistoryFrame } from "../../src/types/world";
 
 test("demo world renders in the app shell", async ({ page }) => {
   await page.goto("/?demo=1");
@@ -23,6 +26,143 @@ test("file search focuses a matching building", async ({ page }) => {
 test("minimap is visible for generated worlds", async ({ page }) => {
   await page.goto("/?demo=1");
   await expect(page.getByLabel("Repository minimap")).toBeVisible();
+});
+
+test("analyze button loads an async job artifact", async ({ page }) => {
+  const jobId = "job-e2e";
+  const artifacts = createWorldArtifacts(demoManifest);
+  const artifactById = new Map([
+    ["index", artifacts.index],
+    ...artifacts.chunks.map((chunk) => [chunk.id, chunk] as const)
+  ]);
+
+  await page.route("**/api/analyze/jobs", async (route) => {
+    await route.fulfill({
+      status: 202,
+      json: {
+        id: jobId,
+        repoUrl: "https://github.com/demo/starter-app",
+        status: "succeeded",
+        stage: "complete",
+        progress: 1,
+        createdAt: "2026-06-18T00:00:00.000Z",
+        updatedAt: "2026-06-18T00:00:01.000Z",
+        artifacts: {
+          manifest: "manifest",
+          index: "index",
+          chunks: artifacts.chunks.map((chunk) => chunk.id),
+          historyFrames: []
+        }
+      }
+    });
+  });
+  await page.route(`**/api/analyze/jobs/${jobId}`, async (route) => {
+    await route.fulfill({
+      json: {
+        id: jobId,
+        repoUrl: "https://github.com/demo/starter-app",
+        status: "succeeded",
+        stage: "complete",
+        progress: 1,
+        createdAt: "2026-06-18T00:00:00.000Z",
+        updatedAt: "2026-06-18T00:00:01.000Z",
+        artifacts: {
+          manifest: "manifest",
+          index: "index",
+          chunks: artifacts.chunks.map((chunk) => chunk.id),
+          historyFrames: []
+        }
+      }
+    });
+  });
+  await page.route(`**/api/analyze/jobs/${jobId}/artifacts/*`, async (route) => {
+    const artifactId = route.request().url().split("/").pop() ?? "";
+    const artifact = artifactById.get(artifactId);
+    await route.fulfill({
+      status: artifact ? 200 : 404,
+      json: artifact ?? { error: "missing test artifact" }
+    });
+  });
+
+  await page.goto("/");
+  await page.getByLabel("GitHub repository URL").fill("https://github.com/demo/starter-app");
+  await page.locator("form").getByRole("button").click();
+
+  await expect(page.getByText("demo/starter-app")).toBeVisible();
+  await expect(page.getByText("4 buildings")).toBeVisible();
+  await expect(page.getByText(/sectors cached/)).toBeVisible();
+});
+
+test("git history artifacts render the timeline", async ({ page }) => {
+  const jobId = "job-history-e2e";
+  const artifacts = createWorldArtifacts(demoManifest);
+  const historyFrames: HistoryFrame[] = [
+    historyFrame("history-a", 0, "1111111", "Add API client", [{ status: "added", path: "src/api.ts" }]),
+    historyFrame("history-b", 1, "2222222", "Tune theme", [{ status: "modified", path: "src/theme.ts" }])
+  ];
+  const artifactById = new Map([
+    ["index", artifacts.index],
+    ...artifacts.chunks.map((chunk) => [chunk.id, chunk] as const),
+    ...historyFrames.map((frame) => [frame.id, frame] as const)
+  ]);
+
+  await page.route("**/api/analyze/jobs", async (route) => {
+    await route.fulfill({
+      status: 202,
+      json: {
+        id: jobId,
+        repoUrl: "https://github.com/demo/starter-app",
+        status: "succeeded",
+        stage: "complete",
+        progress: 1,
+        createdAt: "2026-06-18T00:00:00.000Z",
+        updatedAt: "2026-06-18T00:00:01.000Z",
+        artifacts: {
+          manifest: "manifest",
+          index: "index",
+          chunks: artifacts.chunks.map((chunk) => chunk.id),
+          historyFrames: historyFrames.map((frame) => frame.id)
+        }
+      }
+    });
+  });
+  await page.route(`**/api/analyze/jobs/${jobId}`, async (route) => {
+    await route.fulfill({
+      json: {
+        id: jobId,
+        repoUrl: "https://github.com/demo/starter-app",
+        status: "succeeded",
+        stage: "complete",
+        progress: 1,
+        createdAt: "2026-06-18T00:00:00.000Z",
+        updatedAt: "2026-06-18T00:00:01.000Z",
+        artifacts: {
+          manifest: "manifest",
+          index: "index",
+          chunks: artifacts.chunks.map((chunk) => chunk.id),
+          historyFrames: historyFrames.map((frame) => frame.id)
+        }
+      }
+    });
+  });
+  await page.route(`**/api/analyze/jobs/${jobId}/artifacts/*`, async (route) => {
+    const artifactId = route.request().url().split("/").pop() ?? "";
+    const artifact = artifactById.get(artifactId);
+    await route.fulfill({
+      status: artifact ? 200 : 404,
+      json: artifact ?? { error: "missing test artifact" }
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Toggle git history capture" }).click();
+  await page.getByLabel("GitHub repository URL").fill("https://github.com/demo/starter-app");
+  await page.locator("form").getByRole("button").click();
+
+  await expect(page.getByRole("slider", { name: "Git history timeline" })).toBeVisible();
+  await expect(page.getByText(/2222222/)).toBeVisible();
+  await page.getByRole("button", { name: "Previous history frame" }).click();
+  await expect(page.getByText(/1111111/)).toBeVisible();
 });
 
 test("toolbar toggles update their pressed state", async ({ page }) => {
@@ -125,6 +265,32 @@ function parseStreetCamera(value: string | null): { x: number; z: number } {
   expect(value).not.toBeNull();
   const [x, z] = value!.split(",").map(Number);
   return { x, z };
+}
+
+function historyFrame(id: string, sequence: number, shortSha: string, message: string, changes: HistoryFrame["changes"]): HistoryFrame {
+  return {
+    version: "1.0",
+    kind: "history_frame",
+    id,
+    sequence,
+    commit: {
+      sha: `${shortSha}${"0".repeat(33)}`,
+      shortSha,
+      message,
+      authorName: "RepoBricks",
+      authoredAt: "2026-06-18T00:00:00.000Z"
+    },
+    summary: {
+      added: changes.filter((change) => change.status === "added").length,
+      modified: changes.filter((change) => change.status === "modified").length,
+      deleted: changes.filter((change) => change.status === "deleted").length,
+      renamed: changes.filter((change) => change.status === "renamed").length,
+      copied: changes.filter((change) => change.status === "copied").length,
+      total: changes.length,
+      truncated: false
+    },
+    changes
+  };
 }
 
 function parseFlyCamera(value: string | null): { x: number; y: number; z: number } {

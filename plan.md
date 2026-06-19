@@ -6,7 +6,7 @@ Build RepoBricks, a TypeScript fullstack web app that turns a public GitHub repo
 
 The MVP optimizes for usefulness over spectacle: paste a GitHub repo URL, analyze the repo, generate a deterministic brick-world manifest, render it in the browser, and let users inspect folders, files, languages, dependencies, and special landmarks.
 
-RepoBricks should stay distinct from Agentopolis by focusing on semantic code comprehension through a brick-building metaphor, not pixel-city live agents or git-history movies.
+RepoBricks should stay distinct from Agentopolis by focusing on semantic code comprehension through a brick-building metaphor. Git history playback should support architectural understanding rather than becoming a pixel-city live-agent clone.
 
 ## Key Decisions
 
@@ -17,7 +17,7 @@ RepoBricks should stay distinct from Agentopolis by focusing on semantic code co
 - Backend: Next.js Node runtime route handlers.
 - MVP repo support: public GitHub repos only.
 - MVP analysis: file tree, languages, LOC/size, simple imports, special landmarks.
-- Deferred: private repos, accounts, persistence, sharing, AI Q&A, commit history movies.
+- Deferred: private repos, accounts, persistence, sharing, AI Q&A, and the visible timeline player.
 - Branding: use brick, block, or model language; do not use LEGO branding publicly.
 
 ## Implementation Checklist
@@ -39,6 +39,10 @@ The second follow-up pass adds navigation and signal cleanup: file search with c
 
 The third visual pass adds a neon scene theme, app-shell theme styling, deterministic prop buildings, and animated decorative cranes around the generated city.
 
+The fourth infrastructure pass adds async analysis jobs, streamable world artifacts, optional git history frame artifacts, and the Railway/Supabase production architecture plan.
+
+The fifth streaming pass adds viewport-prioritized chunk loading, partial-manifest rendering from active chunks, camera-following chunk prefetch, and a visible git history timeline with changed-file highlighting.
+
 ## Public Interfaces
 
 - `POST /api/analyze`
@@ -46,9 +50,18 @@ The third visual pass adds a neon scene theme, app-shell theme styling, determin
   - Output: `WorldManifest`
   - Errors: `400` invalid URL, `404` unavailable repo, `413` repo too large, `500` analysis failure
 
+- `POST /api/analyze/jobs`
+  - Input: `{ "repoUrl": "https://github.com/owner/repo", "includeHistory": true, "maxHistoryFrames": 60 }`
+  - Output: `AnalysisJob`
+  - Follow-up reads: `GET /api/analyze/jobs/{jobId}` and `GET /api/analyze/jobs/{jobId}/artifacts/{artifactId}`
+
 - `WorldManifest`
   - Stable JSON contract between backend analysis and frontend renderer.
   - Versioned with `version: "1.0"` so future AI, history, and sharing features can evolve safely.
+
+- `WorldIndex`, `WorldChunk`, and `HistoryFrame`
+  - Stable artifact contracts for large-repo streaming and git history time-lapse.
+  - Stored behind the job API locally; intended for Supabase/R2-compatible object storage in production.
 
 ## Test Plan
 
@@ -68,5 +81,5 @@ The third visual pass adds a neon scene theme, app-shell theme styling, determin
 - No Agentopolis code is copied; it is competitive reference only.
 - Public GitHub repo support is enough for MVP.
 - AI summaries and natural-language repo Q&A are Phase 2.
-- Git history time-lapse is intentionally out of scope for MVP.
-- Hosted deployment should use a Node-capable container environment because repo cloning and temp files are required.
+- Git history time-lapse data extraction and visible timeline playback are now in scope.
+- Hosted analysis should run in a Railway Node worker because repo cloning and temp files are required.

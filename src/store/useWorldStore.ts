@@ -1,12 +1,14 @@
 "use client";
 
 import { create } from "zustand";
-import type { Selection, ViewMode } from "@/types/world";
+import type { Selection, Vec3, ViewMode } from "@/types/world";
 
 type WorldStore = {
   selection: Selection;
   viewMode: ViewMode;
   sceneTheme: "day" | "neon";
+  viewportAnchor: Vec3;
+  historyFocusPaths: string[];
   pressedKeys: Record<string, boolean>;
   showDependencies: boolean;
   colorByLanguage: boolean;
@@ -16,6 +18,8 @@ type WorldStore = {
   setSelection: (selection: Selection) => void;
   setViewMode: (value: ViewMode) => void;
   setSceneTheme: (value: "day" | "neon") => void;
+  setViewportAnchor: (value: Vec3) => void;
+  setHistoryFocusPaths: (value: string[]) => void;
   setPressedKey: (key: string, pressed: boolean) => void;
   clearPressedKeys: () => void;
   setShowDependencies: (value: boolean) => void;
@@ -29,6 +33,8 @@ export const useWorldStore = create<WorldStore>((set) => ({
   selection: null,
   viewMode: "overview",
   sceneTheme: "day",
+  viewportAnchor: { x: 0, y: 0, z: 0 },
+  historyFocusPaths: [],
   pressedKeys: {},
   showDependencies: true,
   colorByLanguage: true,
@@ -38,6 +44,8 @@ export const useWorldStore = create<WorldStore>((set) => ({
   setSelection: (selection) => set({ selection }),
   setViewMode: (value) => set({ viewMode: value }),
   setSceneTheme: (value) => set({ sceneTheme: value }),
+  setViewportAnchor: (value) => set({ viewportAnchor: value }),
+  setHistoryFocusPaths: (value) => set({ historyFocusPaths: value }),
   setPressedKey: (key, pressed) =>
     set((state) => ({
       pressedKeys: {

@@ -8,11 +8,12 @@ Paste a repo URL, analyze its tracked files, and walk, fly, or orbit through a g
 
 ## Highlights
 
-- Public GitHub repo intake through `POST /api/analyze`
+- Public GitHub repo intake through `POST /api/analyze` and async analysis jobs
 - Deterministic repo-to-world manifest for repeatable layouts
 - Brick-style districts, file buildings, roads, landmarks, studs, and dependency links
 - Language colors, role-specific roofs, TODO scaffolds, symbol stacks, dependency pulses, search, minimap, and inspector details
 - Neon scene theme with decorative prop buildings and animated construction cranes
+- Viewport-prioritized world chunk streaming and optional git history timeline playback
 - Connector roads appear only where repo-local imports cross districts
 - Overview orbit mode, street-level walking mode, and free-flight mode
 - Local fixture tests so CI can run without GitHub network access
@@ -99,12 +100,13 @@ npm run test:e2e  # Playwright browser tests
 ## How It Works
 
 1. The API validates `https://github.com/owner/repo` URLs.
-2. The analyzer clones the public repo with a shallow Git clone.
+2. The analyzer runs as a job, clones the public repo with a shallow Git clone, and can optionally capture recent commit history.
 3. Tracked files are grouped into districts by top-level folder.
 4. File metrics are extracted: bytes, LOC, imports, symbols, TODO/FIXME count, and language.
 5. Simple local imports are resolved into dependency connections.
 6. Landmark files such as READMEs, docs, tests, workflow files, and config files get special shapes.
-7. The frontend renders the versioned `WorldManifest` with React Three Fiber.
+7. The analyzer emits a compatibility `WorldManifest`, a `WorldIndex`, streamable `WorldChunk` artifacts, and optional `HistoryFrame` artifacts.
+8. The frontend loads nearest chunks first, streams more sectors around the current camera, and renders a visible git history timeline when history capture is enabled.
 
 ## Architecture
 
@@ -112,18 +114,21 @@ npm run test:e2e  # Playwright browser tests
 - TypeScript across frontend, backend, and tests
 - React Three Fiber, Drei, and Three.js for the 3D renderer
 - Zustand for scene state, selection, toggles, and camera modes
+- File-backed local analysis jobs that mirror the planned Railway worker/Supabase queue shape
 - Vitest for analyzer/API behavior
 - Playwright for browser and canvas smoke tests
+
+See `docs/production-architecture.md` for the Railway analyzer worker and Supabase artifact-storage plan.
 
 ## Current Limits
 
 - Public GitHub repositories only
 - Node runtime required because repo analysis uses Git and temp files
 - Repos over 20,000 tracked files are rejected
-- At most 1,500 files are rendered in the MVP
+- At most 1,500 files are rendered by default; async jobs can request up to 10,000 rendered files for streamed artifacts
 - Files over 250 KB are represented but not scanned for imports or symbols
 - Generated/vendor folders are skipped
-- Private repos, persistence, sharing, AI summaries, and commit-history playback are future work
+- Private repos, persistence, sharing, AI summaries, and branch comparison are future work
 
 ## API
 
@@ -151,6 +156,22 @@ Returns a versioned `WorldManifest`:
   warnings: string[]
 }
 ```
+
+Async analysis jobs:
+
+```http
+POST /api/analyze/jobs
+Content-Type: application/json
+
+{
+  "repoUrl": "https://github.com/owner/repo",
+  "includeHistory": true,
+  "maxHistoryFrames": 60
+}
+```
+
+Poll `GET /api/analyze/jobs/{jobId}` and fetch artifacts from
+`GET /api/analyze/jobs/{jobId}/artifacts/{artifactId}`.
 
 ## Project Direction
 

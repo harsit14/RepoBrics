@@ -1,14 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { AlertTriangle, Box, Footprints, Github, HelpCircle, Layers3, Loader2, Moon, Network, Plane, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, Box, Clock3, Footprints, Github, HelpCircle, Layers3, Loader2, Moon, Network, Pause, Plane, Play, RotateCcw, Search, SkipBack, SkipForward, SlidersHorizontal } from "lucide-react";
 import { demoManifest } from "@/lib/demoManifest";
+import { composeManifestFromArtifacts } from "@/lib/worldArtifacts";
 import { Inspector } from "@/components/Inspector";
 import { useWorldStore } from "@/store/useWorldStore";
-import type { Building, Selection, Vec3, WorldManifest } from "@/types/world";
+import type { AnalysisJob, Building, HistoryFrame, Selection, Vec3, WorldChunk, WorldChunkRef, WorldIndex, WorldManifest } from "@/types/world";
 
 const DEFAULT_REPO = "https://github.com/vercel/swr";
+const INITIAL_CHUNK_COUNT = 4;
+const ACTIVE_CHUNK_COUNT = 14;
+const CHUNK_FETCH_BATCH = 4;
+const STREAM_RENDERED_FILE_LIMIT = 10_000;
+
+type StreamSession = {
+  jobId: string;
+  index: WorldIndex;
+  chunkArtifactIds: string[];
+  historyArtifactIds: string[];
+};
+
 const WorldCanvas = dynamic(() => import("@/components/WorldCanvas").then((mod) => mod.WorldCanvas), {
   ssr: false,
   loading: () => <div className="h-full min-h-[58vh] w-full bg-[#e9eef6] md:min-h-0" />
@@ -20,6 +33,15 @@ export function RepoBricksApp() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileSearch, setFileSearch] = useState("");
+  const [analysisStatus, setAnalysisStatus] = useState<string | null>(null);
+  const [includeHistory, setIncludeHistory] = useState(false);
+  const [streamSession, setStreamSession] = useState<StreamSession | null>(null);
+  const [worldChunks, setWorldChunks] = useState<WorldChunk[]>([]);
+  const [streamMessage, setStreamMessage] = useState<string | null>(null);
+  const [historyFrames, setHistoryFrames] = useState<HistoryFrame[]>([]);
+  const [activeHistoryFrameId, setActiveHistoryFrameId] = useState<string | null>(null);
+  const [historyPlaying, setHistoryPlaying] = useState(false);
+  const requestedChunkIds = useRef(new Set<string>());
   const selection = useWorldStore((state) => state.selection);
   const setSelection = useWorldStore((state) => state.setSelection);
   const showDependencies = useWorldStore((state) => state.showDependencies);
@@ -28,12 +50,15 @@ export function RepoBricksApp() {
   const viewMode = useWorldStore((state) => state.viewMode);
   const sceneTheme = useWorldStore((state) => state.sceneTheme);
   const helpOpen = useWorldStore((state) => state.helpOpen);
+  const viewportAnchor = useWorldStore((state) => state.viewportAnchor);
+  const historyFocusPaths = useWorldStore((state) => state.historyFocusPaths);
   const setShowDependencies = useWorldStore((state) => state.setShowDependencies);
   const setColorByLanguage = useWorldStore((state) => state.setColorByLanguage);
   const setHighlightComplexity = useWorldStore((state) => state.setHighlightComplexity);
   const setViewMode = useWorldStore((state) => state.setViewMode);
   const setSceneTheme = useWorldStore((state) => state.setSceneTheme);
   const setHelpOpen = useWorldStore((state) => state.setHelpOpen);
+  const setHistoryFocusPaths = useWorldStore((state) => state.setHistoryFocusPaths);
   const resetView = useWorldStore((state) => state.resetView);
   const setPressedKey = useWorldStore((state) => state.setPressedKey);
   const clearPressedKeys = useWorldStore((state) => state.clearPressedKeys);
@@ -44,11 +69,110 @@ export function RepoBricksApp() {
       setManifest(demoManifest);
       setRepoUrl(demoManifest.repo.url);
       setFileSearch("");
+      setStreamSession(null);
+      setWorldChunks([]);
+      setHistoryFrames([]);
+      setActiveHistoryFrameId(null);
+      setHistoryFocusPaths([]);
     }
     if (params.get("theme") === "neon") {
       setSceneTheme("neon");
     }
-  }, [setSceneTheme]);
+  }, [setHistoryFocusPaths, setSceneTheme]);
+
+  const chunkAnchor = useMemo(
+    () => ({
+      x: Math.round(viewportAnchor.x / 8) * 8,
+      y: 0,
+      z: Math.round(viewportAnchor.z / 8) * 8
+    }),
+    [viewportAnchor.x, viewportAnchor.z]
+  );
+
+  const activeChunkRefs = useMemo(() => {
+    if (!streamSession) {
+      return [];
+    }
+    return prioritizeChunkRefs(streamSession.index, chunkAnchor, historyFocusPaths).slice(0, ACTIVE_CHUNK_COUNT);
+  }, [chunkAnchor, historyFocusPaths, streamSession]);
+
+  const activeChunkIds = useMemo(() => new Set(activeChunkRefs.map((chunk) => chunk.id)), [activeChunkRefs]);
+
+  useEffect(() => {
+    if (!streamSession) {
+      return;
+    }
+
+    const visibleChunks = worldChunks.filter((chunk) => activeChunkIds.has(chunk.id));
+    if (visibleChunks.length === 0) {
+      return;
+    }
+
+    setManifest(composeManifestFromArtifacts(streamSession.index, visibleChunks));
+  }, [activeChunkIds, streamSession, worldChunks]);
+
+  useEffect(() => {
+    if (!streamSession) {
+      return;
+    }
+
+    const loadedIds = new Set(worldChunks.map((chunk) => chunk.id));
+    const missing = activeChunkRefs
+      .filter((chunk) => !loadedIds.has(chunk.id) && !requestedChunkIds.current.has(chunk.id))
+      .slice(0, CHUNK_FETCH_BATCH);
+
+    if (missing.length === 0) {
+      setStreamMessage(streamStatus(streamSession.index, worldChunks, activeChunkIds.size));
+      return;
+    }
+
+    for (const chunk of missing) {
+      requestedChunkIds.current.add(chunk.id);
+    }
+    setStreamMessage(`Loading ${missing.length} nearby sector${missing.length === 1 ? "" : "s"}`);
+
+    let cancelled = false;
+    Promise.all(missing.map((chunk) => fetchArtifact<WorldChunk>(streamSession.jobId, chunk.artifactId)))
+      .then((nextChunks) => {
+        if (cancelled) {
+          return;
+        }
+        setWorldChunks((current) => mergeChunks(current, nextChunks));
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setError(error instanceof Error ? error.message : "RepoBricks could not stream a world chunk.");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeChunkIds, activeChunkRefs, streamSession, worldChunks]);
+
+  useEffect(() => {
+    if (!historyPlaying || historyFrames.length <= 1) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setActiveHistoryFrameId((current) => {
+        const index = Math.max(0, historyFrames.findIndex((frame) => frame.id === current));
+        return historyFrames[(index + 1) % historyFrames.length]?.id ?? null;
+      });
+    }, 1150);
+
+    return () => window.clearInterval(timer);
+  }, [historyFrames, historyPlaying]);
+
+  const activeHistoryFrame = useMemo(
+    () => historyFrames.find((frame) => frame.id === activeHistoryFrameId) ?? null,
+    [activeHistoryFrameId, historyFrames]
+  );
+
+  useEffect(() => {
+    setHistoryFocusPaths(activeHistoryFrame ? changedPathsForFrame(activeHistoryFrame) : []);
+  }, [activeHistoryFrame, setHistoryFocusPaths]);
 
   useEffect(() => {
     if (viewMode === "overview") {
@@ -141,25 +265,100 @@ export function RepoBricksApp() {
     setRepoUrl(target);
     setError(null);
     setIsLoading(true);
+    setAnalysisStatus("Queued");
     setSelection(null);
     setFileSearch("");
+    setManifest(null);
+    setStreamSession(null);
+    setWorldChunks([]);
+    setStreamMessage(null);
+    setHistoryFrames([]);
+    setActiveHistoryFrameId(null);
+    setHistoryPlaying(false);
+    setHistoryFocusPaths([]);
+    requestedChunkIds.current.clear();
 
     try {
-      const response = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repoUrl: target })
-      });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error ?? "RepoBricks could not analyze this repository.");
+      const job = await runAnalysisJob(target, includeHistory, setAnalysisStatus);
+      if (!job.artifacts) {
+        throw new Error("RepoBricks finished the job without artifact references.");
       }
-      setManifest(payload as WorldManifest);
+
+      setAnalysisStatus("Loading world index");
+      const index = await fetchArtifact<WorldIndex>(job.id, job.artifacts.index);
+      const session = {
+        jobId: job.id,
+        index,
+        chunkArtifactIds: job.artifacts.chunks,
+        historyArtifactIds: job.artifacts.historyFrames
+      };
+      setStreamSession(session);
+
+      const initialRefs = prioritizeChunkRefs(index, index.bounds.center, []).slice(0, INITIAL_CHUNK_COUNT);
+      for (const chunk of initialRefs) {
+        requestedChunkIds.current.add(chunk.id);
+      }
+      setAnalysisStatus(`Loading ${initialRefs.length} sector${initialRefs.length === 1 ? "" : "s"}`);
+      const initialChunks = await Promise.all(initialRefs.map((chunk) => fetchArtifact<WorldChunk>(job.id, chunk.artifactId)));
+      setWorldChunks(initialChunks);
+      setManifest(composeManifestFromArtifacts(index, initialChunks));
+
+      if (job.artifacts.historyFrames.length > 0) {
+        setAnalysisStatus("Loading timeline");
+        const frames = await Promise.all(job.artifacts.historyFrames.map((artifactId) => fetchArtifact<HistoryFrame>(job.id, artifactId)));
+        const orderedFrames = frames.sort((a, b) => a.sequence - b.sequence);
+        setHistoryFrames(orderedFrames);
+        setActiveHistoryFrameId(orderedFrames.at(-1)?.id ?? null);
+      }
+
+      setStreamMessage(streamStatus(index, initialChunks, Math.min(index.chunks.length, ACTIVE_CHUNK_COUNT)));
     } catch (err) {
       setError(err instanceof Error ? err.message : "RepoBricks could not analyze this repository.");
     } finally {
       setIsLoading(false);
+      setAnalysisStatus(null);
     }
+  }
+
+  async function runAnalysisJob(repoUrl: string, historyEnabled: boolean, onStatus: (status: string) => void): Promise<AnalysisJob> {
+    const createResponse = await fetch("/api/analyze/jobs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repoUrl,
+        includeHistory: historyEnabled,
+        maxHistoryFrames: historyEnabled ? 60 : undefined,
+        maxRenderedFiles: STREAM_RENDERED_FILE_LIMIT
+      })
+    });
+    const createPayload = await createResponse.json();
+    if (!createResponse.ok) {
+      throw new Error(createPayload.error ?? "RepoBricks could not start this analysis job.");
+    }
+
+    let job = createPayload as AnalysisJob;
+    onStatus(statusLabel(job));
+
+    for (let attempt = 0; attempt < 240; attempt += 1) {
+      if (job.status === "succeeded") {
+        return job;
+      }
+
+      if (job.status === "failed") {
+        throw new Error(job.error ?? "RepoBricks could not analyze this repository.");
+      }
+
+      await sleep(750);
+      const jobResponse = await fetch(`/api/analyze/jobs/${encodeURIComponent(job.id)}`);
+      const jobPayload = await jobResponse.json();
+      if (!jobResponse.ok) {
+        throw new Error(jobPayload.error ?? "RepoBricks lost track of this analysis job.");
+      }
+      job = jobPayload as AnalysisJob;
+      onStatus(statusLabel(job));
+    }
+
+    throw new Error("RepoBricks analysis timed out. Try a smaller repository or run the analyzer worker.");
   }
 
   return (
@@ -193,7 +392,7 @@ export function RepoBricksApp() {
               type="submit"
             >
               {isLoading ? <Loader2 className="animate-spin" size={17} aria-hidden="true" /> : <Search size={17} aria-hidden="true" />}
-              <span className="hidden sm:inline">{isLoading ? "Analyzing" : "Analyze"}</span>
+              <span className="hidden sm:inline">{isLoading ? analysisStatus ?? "Analyzing" : "Analyze"}</span>
             </button>
           </form>
 
@@ -247,6 +446,17 @@ export function RepoBricksApp() {
               type="button"
             >
               <SlidersHorizontal size={17} aria-hidden="true" />
+            </button>
+            <button
+              className={`icon-button ${includeHistory ? "icon-button-active" : ""}`}
+              onClick={() => setIncludeHistory(!includeHistory)}
+              title="Git history"
+              aria-label="Toggle git history capture"
+              aria-pressed={includeHistory}
+              disabled={isLoading}
+              type="button"
+            >
+              <Clock3 size={17} aria-hidden="true" />
             </button>
             <button
               className={`icon-button ${sceneTheme === "neon" ? "icon-button-active" : ""}`}
@@ -316,6 +526,21 @@ export function RepoBricksApp() {
             </div>
           ) : null}
 
+          {streamSession ? (
+            <StreamHud index={streamSession.index} loadedCount={worldChunks.length} activeCount={activeChunkIds.size} message={streamMessage} />
+          ) : null}
+
+          {historyFrames.length > 0 ? (
+            <HistoryTimeline
+              frames={historyFrames}
+              activeFrame={activeHistoryFrame}
+              playing={historyPlaying}
+              onSelect={(frame) => setActiveHistoryFrameId(frame.id)}
+              onPlayToggle={() => setHistoryPlaying((value) => !value)}
+              onStep={(direction) => setActiveHistoryFrameId((current) => stepFrame(historyFrames, current, direction)?.id ?? null)}
+            />
+          ) : null}
+
           {helpOpen ? <ControlsHelp viewMode={viewMode} onClose={() => setHelpOpen(false)} /> : null}
 
           <div className="absolute bottom-3 left-3 right-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white/92 px-3 py-2 text-xs text-slate-600 shadow-sm backdrop-blur md:right-auto">
@@ -327,7 +552,11 @@ export function RepoBricksApp() {
                 <span>{manifest.stats.connections} links</span>
                 <span>{manifest.stats.landmarks} landmarks</span>
                 <span>{viewMode === "street" ? "Street View" : viewMode === "fly" ? "Fly Mode" : "Overview"}</span>
+                {streamSession ? <span>{worldChunks.length}/{streamSession.index.chunks.length} sectors cached</span> : null}
+                {isLoading && analysisStatus ? <span>{analysisStatus}</span> : null}
               </>
+            ) : isLoading && analysisStatus ? (
+              <span>{analysisStatus}</span>
             ) : null}
           </div>
         </div>
@@ -482,6 +711,103 @@ function WorldMinimap({
         {selectedPoint ? <circle cx={selectedPoint.x} cy={selectedPoint.y} r={4.5} fill="none" stroke="#0ea5e9" strokeWidth={1.6} /> : null}
       </svg>
     </div>
+  );
+}
+
+function StreamHud({ index, loadedCount, activeCount, message }: { index: WorldIndex; loadedCount: number; activeCount: number; message: string | null }) {
+  return (
+    <div className="absolute right-3 top-[8.75rem] z-10 w-44 rounded-lg border border-slate-200 bg-white/92 p-2 text-xs text-slate-600 shadow-panel backdrop-blur sm:top-[10.5rem]">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold text-slate-950">Streaming</span>
+        <span>{loadedCount}/{index.chunks.length}</span>
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200">
+        <div className="h-full rounded-full bg-sky-500 transition-all" style={{ width: `${index.chunks.length === 0 ? 0 : Math.round((loadedCount / index.chunks.length) * 100)}%` }} />
+      </div>
+      <p className="mt-2 leading-4">{message ?? `${activeCount} sectors active near camera`}</p>
+    </div>
+  );
+}
+
+function HistoryTimeline({
+  frames,
+  activeFrame,
+  playing,
+  onSelect,
+  onPlayToggle,
+  onStep
+}: {
+  frames: HistoryFrame[];
+  activeFrame: HistoryFrame | null;
+  playing: boolean;
+  onSelect: (frame: HistoryFrame) => void;
+  onPlayToggle: () => void;
+  onStep: (direction: -1 | 1) => void;
+}) {
+  const activeIndex = Math.max(0, frames.findIndex((frame) => frame.id === activeFrame?.id));
+  const frame = activeFrame ?? frames[activeIndex] ?? frames[0];
+
+  if (!frame) {
+    return null;
+  }
+
+  return (
+    <div className="absolute bottom-16 left-3 right-3 z-10 rounded-lg border border-slate-200 bg-white/94 p-3 text-xs text-slate-600 shadow-panel backdrop-blur md:right-4">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center">
+        <div className="flex shrink-0 items-center gap-1">
+          <button className="icon-button h-8 w-8" onClick={() => onStep(-1)} aria-label="Previous history frame" type="button">
+            <SkipBack size={15} aria-hidden="true" />
+          </button>
+          <button className="icon-button h-8 w-8" onClick={onPlayToggle} aria-label={playing ? "Pause git history timeline" : "Play git history timeline"} type="button">
+            {playing ? <Pause size={15} aria-hidden="true" /> : <Play size={15} aria-hidden="true" />}
+          </button>
+          <button className="icon-button h-8 w-8" onClick={() => onStep(1)} aria-label="Next history frame" type="button">
+            <SkipForward size={15} aria-hidden="true" />
+          </button>
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex items-center justify-between gap-3">
+            <p className="truncate font-semibold text-slate-950">
+              {frame.commit.shortSha} · {frame.commit.message}
+            </p>
+            <span className="shrink-0 text-slate-500">{activeIndex + 1}/{frames.length}</span>
+          </div>
+          <input
+            className="w-full accent-sky-600"
+            type="range"
+            min={0}
+            max={frames.length - 1}
+            value={activeIndex}
+            aria-label="Git history timeline"
+            onChange={(event) => onSelect(frames[Number(event.target.value)])}
+          />
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <TimelineStat label="Added" value={frame.summary.added} color="bg-emerald-500" />
+            <TimelineStat label="Modified" value={frame.summary.modified} color="bg-sky-500" />
+            <TimelineStat label="Deleted" value={frame.summary.deleted} color="bg-rose-500" />
+            <TimelineStat label="Renamed" value={frame.summary.renamed} color="bg-amber-500" />
+            <span className="truncate text-slate-500">{new Date(frame.commit.authoredAt).toLocaleDateString()}</span>
+          </div>
+        </div>
+        <div className="hidden w-52 shrink-0 md:block">
+          <p className="truncate font-medium text-slate-950">{frame.changes[0]?.path ?? "No file changes"}</p>
+          <p className="mt-1 truncate text-slate-500">
+            {frame.summary.total.toLocaleString()} touched file{frame.summary.total === 1 ? "" : "s"}
+            {frame.summary.truncated ? " · truncated" : ""}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TimelineStat({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded border border-slate-200 bg-white px-1.5 py-0.5">
+      <span className={`h-2 w-2 rounded-full ${color}`} />
+      <span>{label}</span>
+      <span className="font-semibold text-slate-950">{value}</span>
+    </span>
   );
 }
 
@@ -674,6 +1000,89 @@ function miniTint(hex: string): string {
   const green = Math.min(255, Math.round(((value >> 8) & 255) + (255 - ((value >> 8) & 255)) * 0.72));
   const blue = Math.min(255, Math.round((value & 255) + (255 - (value & 255)) * 0.72));
   return `#${[red, green, blue].map((part) => part.toString(16).padStart(2, "0")).join("")}`;
+}
+
+async function fetchArtifact<T>(jobId: string, artifactId: string): Promise<T> {
+  const response = await fetch(`/api/analyze/jobs/${encodeURIComponent(jobId)}/artifacts/${encodeURIComponent(artifactId)}`);
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error ?? "RepoBricks could not load an analysis artifact.");
+  }
+  return payload as T;
+}
+
+function prioritizeChunkRefs(index: WorldIndex, anchor: Vec3, focusPaths: string[]): WorldChunkRef[] {
+  const focusDistricts = new Set(focusPaths.map(districtIdForPath));
+  return [...index.chunks].sort((a, b) => {
+    const aFocused = a.districtIds.some((districtId) => focusDistricts.has(districtId));
+    const bFocused = b.districtIds.some((districtId) => focusDistricts.has(districtId));
+    if (aFocused !== bFocused) {
+      return aFocused ? -1 : 1;
+    }
+    return distanceToBounds(anchor, a.bounds) - distanceToBounds(anchor, b.bounds) || a.id.localeCompare(b.id);
+  });
+}
+
+function mergeChunks(current: WorldChunk[], next: WorldChunk[]): WorldChunk[] {
+  const byId = new Map(current.map((chunk) => [chunk.id, chunk]));
+  for (const chunk of next) {
+    byId.set(chunk.id, chunk);
+  }
+  return [...byId.values()].sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function streamStatus(index: WorldIndex, chunks: WorldChunk[], activeCount: number): string {
+  if (chunks.length >= index.chunks.length) {
+    return "All sectors cached";
+  }
+  return `${activeCount} active near camera · ${chunks.length} cached`;
+}
+
+function changedPathsForFrame(frame: HistoryFrame): string[] {
+  return [...new Set(frame.changes.flatMap((change) => [change.path, change.previousPath].filter((path): path is string => Boolean(path))))];
+}
+
+function stepFrame(frames: HistoryFrame[], currentId: string | null, direction: -1 | 1): HistoryFrame | null {
+  if (frames.length === 0) {
+    return null;
+  }
+  const currentIndex = Math.max(0, frames.findIndex((frame) => frame.id === currentId));
+  const nextIndex = (currentIndex + direction + frames.length) % frames.length;
+  return frames[nextIndex] ?? frames[0];
+}
+
+function districtIdForPath(filePath: string): string {
+  return filePath.includes("/") ? filePath.split("/")[0] : "root";
+}
+
+function distanceToBounds(point: Vec3, bounds: WorldIndex["bounds"]): number {
+  const dx = point.x < bounds.min.x ? bounds.min.x - point.x : point.x > bounds.max.x ? point.x - bounds.max.x : 0;
+  const dz = point.z < bounds.min.z ? bounds.min.z - point.z : point.z > bounds.max.z ? point.z - bounds.max.z : 0;
+  return Math.hypot(dx, dz);
+}
+
+function statusLabel(job: AnalysisJob): string {
+  const percent = Math.max(0, Math.min(100, Math.round(job.progress * 100)));
+  switch (job.stage) {
+    case "queued":
+      return "Queued";
+    case "cloning":
+      return `Cloning ${percent}%`;
+    case "analyzing":
+      return `Analyzing ${percent}%`;
+    case "chunking":
+      return `Chunking ${percent}%`;
+    case "history":
+      return `History ${percent}%`;
+    case "complete":
+      return "Complete";
+    case "failed":
+      return "Failed";
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 const NAVIGATION_KEYS = new Set([

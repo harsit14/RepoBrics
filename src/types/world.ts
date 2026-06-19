@@ -12,6 +12,9 @@ export type Dimensions = {
 
 export type AnalyzeRequest = {
   repoUrl: string;
+  includeHistory?: boolean;
+  maxHistoryFrames?: number;
+  maxRenderedFiles?: number;
 };
 
 export type RepoInfo = {
@@ -127,6 +130,127 @@ export type WorldManifest = {
   roads: Road[];
   landmarks: Landmark[];
   warnings: string[];
+};
+
+export type Bounds = {
+  min: Vec3;
+  max: Vec3;
+  center: Vec3;
+  radius: number;
+};
+
+export type WorldChunkStats = {
+  districts: number;
+  buildings: number;
+  connections: number;
+  roads: number;
+  landmarks: number;
+  loc: number;
+  bytes: number;
+};
+
+export type WorldChunkRef = {
+  id: string;
+  name: string;
+  districtIds: string[];
+  bounds: Bounds;
+  stats: WorldChunkStats;
+  artifactId: string;
+};
+
+export type WorldIndex = {
+  version: "1.0";
+  kind: "world_index";
+  generatedAt: string;
+  repo: RepoInfo;
+  stats: WorldStats;
+  bounds: Bounds;
+  chunks: WorldChunkRef[];
+  history?: HistorySummary;
+  warnings: string[];
+};
+
+export type WorldChunk = {
+  version: "1.0";
+  kind: "world_chunk";
+  id: string;
+  generatedAt: string;
+  repo: RepoInfo;
+  districtIds: string[];
+  bounds: Bounds;
+  stats: WorldChunkStats;
+  districts: District[];
+  buildings: Building[];
+  connections: Connection[];
+  roads: Road[];
+  landmarks: Landmark[];
+};
+
+export type HistoryChangeStatus = "added" | "modified" | "deleted" | "renamed" | "copied" | "type_changed" | "unknown";
+
+export type HistoryChange = {
+  status: HistoryChangeStatus;
+  path: string;
+  previousPath?: string;
+};
+
+export type HistoryCommit = {
+  sha: string;
+  shortSha: string;
+  message: string;
+  authorName: string;
+  authoredAt: string;
+};
+
+export type HistoryFrame = {
+  version: "1.0";
+  kind: "history_frame";
+  id: string;
+  sequence: number;
+  commit: HistoryCommit;
+  summary: {
+    added: number;
+    modified: number;
+    deleted: number;
+    renamed: number;
+    copied: number;
+    total: number;
+    truncated: boolean;
+  };
+  changes: HistoryChange[];
+};
+
+export type HistorySummary = {
+  frameCount: number;
+  firstCommit?: HistoryCommit;
+  lastCommit?: HistoryCommit;
+  artifactIds: string[];
+};
+
+export type AnalysisArtifacts = {
+  manifest: WorldManifest;
+  index: WorldIndex;
+  chunks: WorldChunk[];
+  historyFrames: HistoryFrame[];
+};
+
+export type AnalysisJobStatus = "queued" | "running" | "succeeded" | "failed";
+
+export type AnalysisJob = {
+  id: string;
+  repoUrl: string;
+  status: AnalysisJobStatus;
+  stage: "queued" | "cloning" | "analyzing" | "chunking" | "history" | "complete" | "failed";
+  progress: number;
+  createdAt: string;
+  updatedAt: string;
+  error?: string;
+  artifacts?: {
+    manifest: string;
+    index: string;
+    chunks: string[];
+    historyFrames: string[];
+  };
 };
 
 export type ViewMode = "overview" | "street" | "fly";
