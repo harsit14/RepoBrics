@@ -1,0 +1,64 @@
+# RepoBricks Project Plan
+
+## Summary
+
+Build RepoBricks, a TypeScript fullstack web app that turns a public GitHub repository into an explorable brick-style 3D architecture map.
+
+The MVP optimizes for usefulness over spectacle: paste a GitHub repo URL, analyze the repo, generate a deterministic brick-world manifest, render it in the browser, and let users inspect folders, files, languages, dependencies, and special landmarks.
+
+RepoBricks should stay distinct from Agentopolis by focusing on semantic code comprehension through a brick-building metaphor, not pixel-city live agents or git-history movies.
+
+## Key Decisions
+
+- Product shape: web app first.
+- Stack: TypeScript fullstack.
+- Framework: Next.js App Router, React, React Three Fiber.
+- Rendering: Three.js via React Three Fiber.
+- Backend: Next.js Node runtime route handlers.
+- MVP repo support: public GitHub repos only.
+- MVP analysis: file tree, languages, LOC/size, simple imports, special landmarks.
+- Deferred: private repos, accounts, persistence, sharing, AI Q&A, commit history movies.
+- Branding: use brick, block, or model language; do not use LEGO branding publicly.
+
+## Implementation Checklist
+
+1. Scaffold the Next.js TypeScript app with Tailwind, React Three Fiber, Drei, Three.js, Zustand, lucide-react, Vitest, and Playwright.
+2. Define the `WorldManifest` contract shared by backend analysis and frontend rendering.
+3. Add `POST /api/analyze` with GitHub URL validation, shallow clone, temp cache usage, and error mapping.
+4. Build the local repo analyzer: tracked files, language detection, metrics, simple import extraction, local import resolution, and landmark detection.
+5. Generate deterministic layout: district baseplates, file buildings, named roads, dependency connectors, and landmark structures.
+6. Build the main app UI: repo bar, full-screen 3D canvas, overview/street-view controls, toggles, status strip, and inspector panel.
+7. Add fixture-based unit tests and Playwright smoke tests that avoid GitHub network by default.
+8. Document setup, scripts, architecture, MVP limits, and future work in `README.md`.
+
+## Public Interfaces
+
+- `POST /api/analyze`
+  - Input: `{ "repoUrl": "https://github.com/owner/repo" }`
+  - Output: `WorldManifest`
+  - Errors: `400` invalid URL, `404` unavailable repo, `413` repo too large, `500` analysis failure
+
+- `WorldManifest`
+  - Stable JSON contract between backend analysis and frontend renderer.
+  - Versioned with `version: "1.0"` so future AI, history, and sharing features can evolve safely.
+
+## Test Plan
+
+- Use Vitest for analysis and API behavior.
+- Use Playwright for user flows and canvas smoke checks.
+- Use deterministic fixtures so CI does not require GitHub network access.
+- Verify before MVP completion:
+  - app builds successfully
+  - no TypeScript errors
+  - one fixture repo produces stable layout positions
+  - one real public repo can be analyzed locally
+  - canvas is nonblank and visible on desktop and mobile
+  - street view responds to keyboard walking and zoom controls
+
+## Assumptions
+
+- No Agentopolis code is copied; it is competitive reference only.
+- Public GitHub repo support is enough for MVP.
+- AI summaries and natural-language repo Q&A are Phase 2.
+- Git history time-lapse is intentionally out of scope for MVP.
+- Hosted deployment should use a Node-capable container environment because repo cloning and temp files are required.

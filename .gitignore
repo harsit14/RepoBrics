@@ -1,0 +1,11 @@
+node_modules
+.next
+out
+coverage
+playwright-report
+test-results
+.env*.local
+*.tsbuildinfo
+repobricks-cache
+.claude/
+IMPROVEMENT_PLAN.md
