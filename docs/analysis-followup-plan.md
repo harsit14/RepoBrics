@@ -26,18 +26,25 @@ The next practical items from the analysis are now included:
 3. Connector roads only between districts that actually share repo-local imports.
 4. Stronger Playwright coverage for search, minimap visibility, and real scene pixels.
 
+## Visual Polish Shipped
+
+These requested visual experiments are now included without changing the manifest contract:
+
+1. Neon theme toggle with darker app chrome, emissive scene materials, neon roads, and brighter dependency pulses.
+2. Deterministic decorative prop buildings placed around the repo city perimeter.
+3. Animated construction cranes that move slowly without becoming selectable repo artifacts.
+
 ## Deferred Follow-Ups
 
 These are good ideas, but they need separate design or data-model work:
 
 1. Minimap camera heading and frustum.
-2. Dark/neon theme toggle with emissive materials.
-3. AI file summaries in the inspector.
-4. glTF scene export.
-5. Branch/repo comparison and code-review diff overlays.
-6. Git history time-lapse.
-7. Progressive district streaming for repositories beyond the current render cap.
-8. Code-smell damage system for circular dependencies, god files, and deep nesting.
+2. AI file summaries in the inspector.
+3. glTF scene export.
+4. Branch/repo comparison and code-review diff overlays.
+5. Git history time-lapse.
+6. Progressive district streaming for repositories beyond the current render cap.
+7. Code-smell damage system for circular dependencies, god files, and deep nesting.
 
 ## Visual Experiments To Validate Later
 
@@ -45,8 +52,7 @@ The toy-table direction is promising, but should be tested after the semantic la
 
 1. Wood or playmat ground surface.
 2. Brick seam normal maps or bevels on building faces.
-3. Decorative construction elements such as a slow crane.
-4. Stronger material themes for plastic reflections.
+3. Stronger material themes for plastic reflections.
 
 ## Acceptance Criteria
 

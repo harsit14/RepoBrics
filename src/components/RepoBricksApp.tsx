@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
-import { AlertTriangle, Box, Footprints, Github, HelpCircle, Layers3, Loader2, Network, Plane, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, Box, Footprints, Github, HelpCircle, Layers3, Loader2, Moon, Network, Plane, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
 import { demoManifest } from "@/lib/demoManifest";
 import { Inspector } from "@/components/Inspector";
 import { useWorldStore } from "@/store/useWorldStore";
@@ -26,11 +26,13 @@ export function RepoBricksApp() {
   const colorByLanguage = useWorldStore((state) => state.colorByLanguage);
   const highlightComplexity = useWorldStore((state) => state.highlightComplexity);
   const viewMode = useWorldStore((state) => state.viewMode);
+  const sceneTheme = useWorldStore((state) => state.sceneTheme);
   const helpOpen = useWorldStore((state) => state.helpOpen);
   const setShowDependencies = useWorldStore((state) => state.setShowDependencies);
   const setColorByLanguage = useWorldStore((state) => state.setColorByLanguage);
   const setHighlightComplexity = useWorldStore((state) => state.setHighlightComplexity);
   const setViewMode = useWorldStore((state) => state.setViewMode);
+  const setSceneTheme = useWorldStore((state) => state.setSceneTheme);
   const setHelpOpen = useWorldStore((state) => state.setHelpOpen);
   const resetView = useWorldStore((state) => state.resetView);
   const setPressedKey = useWorldStore((state) => state.setPressedKey);
@@ -43,7 +45,10 @@ export function RepoBricksApp() {
       setRepoUrl(demoManifest.repo.url);
       setFileSearch("");
     }
-  }, []);
+    if (params.get("theme") === "neon") {
+      setSceneTheme("neon");
+    }
+  }, [setSceneTheme]);
 
   useEffect(() => {
     if (viewMode === "overview") {
@@ -158,7 +163,7 @@ export function RepoBricksApp() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-slate-50 text-slate-950">
+    <main className="flex min-h-screen flex-col bg-slate-50 text-slate-950" data-scene-theme={sceneTheme}>
       <header className="z-20 border-b border-slate-200 bg-white/92 px-3 py-3 shadow-sm backdrop-blur md:px-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <div className="flex min-w-0 items-center gap-3">
@@ -242,6 +247,16 @@ export function RepoBricksApp() {
               type="button"
             >
               <SlidersHorizontal size={17} aria-hidden="true" />
+            </button>
+            <button
+              className={`icon-button ${sceneTheme === "neon" ? "icon-button-active" : ""}`}
+              onClick={() => setSceneTheme(sceneTheme === "neon" ? "day" : "neon")}
+              title="Neon theme"
+              aria-label="Toggle neon theme"
+              aria-pressed={sceneTheme === "neon"}
+              type="button"
+            >
+              <Moon size={17} aria-hidden="true" />
             </button>
 
             <span className="mx-0.5 h-6 w-px bg-slate-200" aria-hidden="true" />

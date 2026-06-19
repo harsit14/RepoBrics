@@ -12,11 +12,18 @@ Paste a repo URL, analyze its tracked files, and walk, fly, or orbit through a g
 - Deterministic repo-to-world manifest for repeatable layouts
 - Brick-style districts, file buildings, roads, landmarks, studs, and dependency links
 - Language colors, role-specific roofs, TODO scaffolds, symbol stacks, dependency pulses, search, minimap, and inspector details
+- Neon scene theme with decorative prop buildings and animated construction cranes
 - Connector roads appear only where repo-local imports cross districts
 - Overview orbit mode, street-level walking mode, and free-flight mode
 - Local fixture tests so CI can run without GitHub network access
 
 ## Screenshots
+
+### Neon Theme
+
+Toggle the neon scene to turn the repo city into a darker, emissive brick world with decorative cranes and prop buildings.
+
+![RepoBricks neon theme](public/screenshots/neon-theme.png)
 
 ### Street View
 
@@ -71,6 +78,12 @@ For a deterministic offline demo, open:
 
 ```text
 http://localhost:3000/?demo=1
+```
+
+To open the demo directly in neon mode:
+
+```text
+http://localhost:3000/?demo=1&theme=neon
 ```
 
 ## Scripts

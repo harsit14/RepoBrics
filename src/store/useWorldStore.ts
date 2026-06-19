@@ -6,6 +6,7 @@ import type { Selection, ViewMode } from "@/types/world";
 type WorldStore = {
   selection: Selection;
   viewMode: ViewMode;
+  sceneTheme: "day" | "neon";
   pressedKeys: Record<string, boolean>;
   showDependencies: boolean;
   colorByLanguage: boolean;
@@ -14,6 +15,7 @@ type WorldStore = {
   resetNonce: number;
   setSelection: (selection: Selection) => void;
   setViewMode: (value: ViewMode) => void;
+  setSceneTheme: (value: "day" | "neon") => void;
   setPressedKey: (key: string, pressed: boolean) => void;
   clearPressedKeys: () => void;
   setShowDependencies: (value: boolean) => void;
@@ -26,6 +28,7 @@ type WorldStore = {
 export const useWorldStore = create<WorldStore>((set) => ({
   selection: null,
   viewMode: "overview",
+  sceneTheme: "day",
   pressedKeys: {},
   showDependencies: true,
   colorByLanguage: true,
@@ -34,6 +37,7 @@ export const useWorldStore = create<WorldStore>((set) => ({
   resetNonce: 0,
   setSelection: (selection) => set({ selection }),
   setViewMode: (value) => set({ viewMode: value }),
+  setSceneTheme: (value) => set({ sceneTheme: value }),
   setPressedKey: (key, pressed) =>
     set((state) => ({
       pressedKeys: {

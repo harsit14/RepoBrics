@@ -12,9 +12,13 @@ type Props = {
   isLoading: boolean;
 };
 
+type SceneTheme = "day" | "neon";
+
 export function WorldCanvas({ manifest, isLoading }: Props) {
   const viewMode = useWorldStore((state) => state.viewMode);
+  const sceneTheme = useWorldStore((state) => state.sceneTheme);
   const isCompactViewport = useCompactViewport();
+  const neon = sceneTheme === "neon";
   const camera = useMemo(() => {
     const distance = manifest ? overviewCameraDistance(manifest, isCompactViewport) : 28;
     return { position: [distance, distance * 0.7, distance] as [number, number, number], fov: 45 };
@@ -25,43 +29,51 @@ export function WorldCanvas({ manifest, isLoading }: Props) {
       className="relative h-full min-h-[58vh] w-full md:min-h-0"
       data-testid="world-canvas"
       style={{
-        background:
-          "radial-gradient(120% 90% at 50% 0%, #f3f7fe 0%, #e4edfa 45%, #d4e0f1 78%, #c7d6ec 100%)"
+        background: neon
+          ? "radial-gradient(120% 100% at 50% 0%, #172554 0%, #0f172a 44%, #050816 78%, #020617 100%)"
+          : "radial-gradient(120% 90% at 50% 0%, #f3f7fe 0%, #e4edfa 45%, #d4e0f1 78%, #c7d6ec 100%)"
       }}
     >
       <Canvas
         camera={camera}
         shadows
         dpr={[1, 2]}
-        gl={{ antialias: true, alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.06 }}
+        gl={{ antialias: true, alpha: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: neon ? 1.18 : 1.06 }}
         className="h-full w-full"
         onPointerMissed={() => useWorldStore.getState().setSelection(null)}
       >
         <SoftShadows size={28} samples={12} focus={0.65} />
-        <fog attach="fog" args={["#cdd9ed", 120, 320]} />
-        <hemisphereLight color="#ffffff" groundColor="#9fb0c8" intensity={0.42} />
-        <ambientLight intensity={0.22} />
+        <fog attach="fog" args={[neon ? "#050816" : "#cdd9ed", neon ? 70 : 120, neon ? 250 : 320]} />
+        <hemisphereLight color={neon ? "#38bdf8" : "#ffffff"} groundColor={neon ? "#0f172a" : "#9fb0c8"} intensity={neon ? 0.28 : 0.42} />
+        <ambientLight intensity={neon ? 0.1 : 0.22} />
         <directionalLight
           castShadow
           position={[26, 38, 18]}
-          intensity={1.55}
-          color="#fff6e8"
+          intensity={neon ? 0.9 : 1.55}
+          color={neon ? "#a5f3fc" : "#fff6e8"}
           shadow-mapSize={[2048, 2048]}
           shadow-bias={-0.00035}
           shadow-normalBias={0.02}
         >
           <orthographicCamera attach="shadow-camera" args={[-70, 70, 70, -70, 1, 160]} />
         </directionalLight>
-        <directionalLight position={[-22, 20, -24]} intensity={0.32} color="#cfe0ff" />
-        <SceneEnvironment />
+        <directionalLight position={[-22, 20, -24]} intensity={neon ? 0.55 : 0.32} color={neon ? "#f0abfc" : "#cfe0ff"} />
+        {neon ? (
+          <>
+            <pointLight position={[0, 10, 0]} intensity={2.4} distance={60} color="#22d3ee" />
+            <pointLight position={[-18, 7, 14]} intensity={1.9} distance={46} color="#f472b6" />
+            <pointLight position={[18, 7, -12]} intensity={1.6} distance={46} color="#a78bfa" />
+          </>
+        ) : null}
+        <SceneEnvironment theme={sceneTheme} />
         <group position={[0, 0, 0]}>
           <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]}>
             <planeGeometry args={[420, 420]} />
-            <meshStandardMaterial color="#d3deee" roughness={0.96} metalness={0} />
+            <meshStandardMaterial color={neon ? "#060a1a" : "#d3deee"} roughness={neon ? 0.72 : 0.96} metalness={0} emissive={neon ? "#0f172a" : "#000000"} emissiveIntensity={neon ? 0.35 : 0} />
           </mesh>
-          <gridHelper args={[420, 84, "#aebccf", "#c5d2e4"]} position={[0, 0.006, 0]} />
-          {manifest ? <WorldScene manifest={manifest} /> : <EmptyScene isLoading={isLoading} />}
-          <ContactShadows frames={1} position={[0, 0.02, 0]} scale={260} resolution={1024} blur={2.4} opacity={0.42} far={40} color="#33415c" />
+          <gridHelper args={[420, 84, neon ? "#0ea5e9" : "#aebccf", neon ? "#1e293b" : "#c5d2e4"]} position={[0, 0.006, 0]} />
+          {manifest ? <WorldScene manifest={manifest} theme={sceneTheme} /> : <EmptyScene isLoading={isLoading} theme={sceneTheme} />}
+          <ContactShadows frames={1} position={[0, 0.02, 0]} scale={260} resolution={1024} blur={2.4} opacity={neon ? 0.28 : 0.42} far={40} color={neon ? "#22d3ee" : "#33415c"} />
         </group>
         {manifest ? <StreetCameraControls enabled={viewMode === "street"} manifest={manifest} /> : null}
         {manifest ? <FlyCameraControls enabled={viewMode === "fly"} manifest={manifest} /> : null}
@@ -83,26 +95,27 @@ export function WorldCanvas({ manifest, isLoading }: Props) {
   );
 }
 
-function WorldScene({ manifest }: { manifest: WorldManifest }) {
+function WorldScene({ manifest, theme }: { manifest: WorldManifest; theme: SceneTheme }) {
   const showDependencies = useWorldStore((state) => state.showDependencies);
   const colorByLanguage = useWorldStore((state) => state.colorByLanguage);
 
   return (
     <>
       {manifest.districts.map((district) => (
-        <DistrictBase key={district.id} district={district} />
+        <DistrictBase key={district.id} district={district} theme={theme} />
       ))}
       {manifest.roads.map((road) => (
-        <RoadMesh key={road.id} road={road} />
+        <RoadMesh key={road.id} road={road} theme={theme} />
       ))}
       {manifest.landmarks.map((landmark) => (
-        <LandmarkMesh key={landmark.id} landmark={landmark} />
+        <LandmarkMesh key={landmark.id} landmark={landmark} theme={theme} />
       ))}
       {manifest.buildings.map((building) => (
-        <BuildingMesh key={building.id} building={building} />
+        <BuildingMesh key={building.id} building={building} theme={theme} />
       ))}
-      <StudField manifest={manifest} colorByLanguage={colorByLanguage} />
-      {showDependencies ? <ConnectionLayer manifest={manifest} /> : null}
+      <DecorativeLayer manifest={manifest} theme={theme} />
+      <StudField manifest={manifest} colorByLanguage={colorByLanguage} theme={theme} />
+      {showDependencies ? <ConnectionLayer manifest={manifest} theme={theme} /> : null}
     </>
   );
 }
@@ -112,23 +125,44 @@ const STUD_HEIGHT = 0.28;
 
 type StudInstance = { x: number; y: number; z: number; r: number; color: string };
 
+type DecorativeTower = {
+  id: string;
+  position: Vec3;
+  width: number;
+  depth: number;
+  height: number;
+  color: string;
+  accent: string;
+  rotation: number;
+  variant: "stack" | "kiosk" | "spire";
+};
+
+type DecorativeCrane = {
+  id: string;
+  position: Vec3;
+  rotation: number;
+  height: number;
+  color: string;
+  accent: string;
+};
+
 // Every stud in the world is drawn through one InstancedMesh: thousands of studs
 // become a single draw call, and they all share identical seating + lighting.
-function StudField({ manifest, colorByLanguage }: { manifest: WorldManifest; colorByLanguage: boolean }) {
+function StudField({ manifest, colorByLanguage, theme }: { manifest: WorldManifest; colorByLanguage: boolean; theme: SceneTheme }) {
   const ref = useRef<THREE.InstancedMesh>(null);
 
   const instances = useMemo<StudInstance[]>(() => {
     const studs: StudInstance[] = [];
 
     for (const district of manifest.districts) {
-      const color = tint(district.color, 0.5);
+      const color = theme === "neon" ? neonize(district.color) : tint(district.color, 0.5);
       for (const local of baseplateStudPositions(district.dimensions.width, district.dimensions.depth)) {
         studs.push({ x: district.position.x + local.x, y: 0.3, z: district.position.z + local.z, r: STUD_RADIUS * 1.05, color });
       }
     }
 
     for (const building of manifest.buildings) {
-      const color = colorByLanguage ? building.color : "#94a3b8";
+      const color = theme === "neon" ? neonize(colorByLanguage ? building.color : "#94a3b8") : colorByLanguage ? building.color : "#94a3b8";
       const top = building.position.y + building.dimensions.height / 2;
       for (const local of buildingStudPositions(building.dimensions.width, building.dimensions.depth)) {
         studs.push({ x: building.position.x + local.x, y: top + STUD_HEIGHT / 2, z: building.position.z + local.z, r: STUD_RADIUS, color });
@@ -141,12 +175,12 @@ function StudField({ manifest, colorByLanguage }: { manifest: WorldManifest; col
         y: landmark.position.y + landmark.dimensions.height / 2 + STUD_HEIGHT / 2,
         z: landmark.position.z,
         r: STUD_RADIUS * 1.1,
-        color: landmark.color
+        color: theme === "neon" ? neonize(landmark.color) : landmark.color
       });
     }
 
     return studs;
-  }, [colorByLanguage, manifest]);
+  }, [colorByLanguage, manifest, theme]);
 
   useEffect(() => {
     const mesh = ref.current;
@@ -176,21 +210,22 @@ function StudField({ manifest, colorByLanguage }: { manifest: WorldManifest; col
   return (
     <instancedMesh key={instances.length} ref={ref} args={[undefined, undefined, instances.length]} castShadow receiveShadow>
       <cylinderGeometry args={[1, 1, 1, 20]} />
-      <meshStandardMaterial roughness={0.34} metalness={0} envMapIntensity={0.7} />
+      <meshStandardMaterial roughness={theme === "neon" ? 0.22 : 0.34} metalness={0} envMapIntensity={theme === "neon" ? 1.1 : 0.7} emissive={theme === "neon" ? "#67e8f9" : "#000000"} emissiveIntensity={theme === "neon" ? 0.22 : 0} />
     </instancedMesh>
   );
 }
 
-function SceneEnvironment() {
+function SceneEnvironment({ theme }: { theme: SceneTheme }) {
+  const neon = theme === "neon";
   // Procedural studio lighting baked into an env map for plastic-brick reflections.
   // Built entirely from Lightformers so it needs no external HDRI / network fetch.
   return (
     <Environment resolution={256}>
-      <color attach="background" args={["#0b1220"]} />
-      <Lightformer form="rect" intensity={2.4} color="#ffffff" position={[0, 14, 8]} scale={[20, 9, 1]} rotation={[-Math.PI / 2.3, 0, 0]} />
-      <Lightformer form="rect" intensity={1.2} color="#d7e6ff" position={[-14, 7, -10]} scale={[11, 11, 1]} rotation={[0, Math.PI / 3, 0]} />
-      <Lightformer form="rect" intensity={1.05} color="#fff1d6" position={[14, 6, 9]} scale={[11, 9, 1]} rotation={[0, -Math.PI / 3, 0]} />
-      <Lightformer form="ring" intensity={1.5} color="#ffffff" position={[7, 11, -7]} scale={6} />
+      <color attach="background" args={[neon ? "#020617" : "#0b1220"]} />
+      <Lightformer form="rect" intensity={neon ? 2.8 : 2.4} color={neon ? "#22d3ee" : "#ffffff"} position={[0, 14, 8]} scale={[20, 9, 1]} rotation={[-Math.PI / 2.3, 0, 0]} />
+      <Lightformer form="rect" intensity={neon ? 1.8 : 1.2} color={neon ? "#f472b6" : "#d7e6ff"} position={[-14, 7, -10]} scale={[11, 11, 1]} rotation={[0, Math.PI / 3, 0]} />
+      <Lightformer form="rect" intensity={neon ? 1.6 : 1.05} color={neon ? "#a78bfa" : "#fff1d6"} position={[14, 6, 9]} scale={[11, 9, 1]} rotation={[0, -Math.PI / 3, 0]} />
+      <Lightformer form="ring" intensity={neon ? 2.2 : 1.5} color={neon ? "#67e8f9" : "#ffffff"} position={[7, 11, -7]} scale={6} />
     </Environment>
   );
 }
@@ -620,7 +655,8 @@ function framing(center: THREE.Vector3, radius: number): { pos: THREE.Vector3; l
   };
 }
 
-function EmptyScene({ isLoading }: { isLoading: boolean }) {
+function EmptyScene({ isLoading, theme }: { isLoading: boolean; theme: SceneTheme }) {
+  const neon = theme === "neon";
   const blocks = isLoading
     ? [
         { x: -1.7, h: 1.8, c: "#eb5757" },
@@ -637,13 +673,13 @@ function EmptyScene({ isLoading }: { isLoading: boolean }) {
     <group position={[0, 0, 0]}>
       <mesh receiveShadow position={[0, 0.1, 0]}>
         <boxGeometry args={[7.5, 0.22, 4.5]} />
-        <meshStandardMaterial color="#ffffff" />
+        <meshStandardMaterial color={neon ? "#0f172a" : "#ffffff"} emissive={neon ? "#164e63" : "#000000"} emissiveIntensity={neon ? 0.35 : 0} />
       </mesh>
       {blocks.map((block) => (
         <group key={block.x} position={[block.x, block.h / 2 + 0.2, 0]}>
           <mesh castShadow>
             <boxGeometry args={[1.2, block.h, 1.2]} />
-            <meshStandardMaterial color={block.c} roughness={0.62} />
+            <meshStandardMaterial color={neon ? neonize(block.c) : block.c} roughness={neon ? 0.28 : 0.62} emissive={neon ? neonize(block.c) : "#000000"} emissiveIntensity={neon ? 0.34 : 0} />
           </mesh>
           <Stud position={{ x: 0, y: block.h / 2 + 0.12, z: 0 }} color={block.c} />
         </group>
@@ -652,10 +688,13 @@ function EmptyScene({ isLoading }: { isLoading: boolean }) {
   );
 }
 
-function DistrictBase({ district }: { district: District }) {
+function DistrictBase({ district, theme }: { district: District; theme: SceneTheme }) {
   const setSelection = useWorldStore((state) => state.setSelection);
   const selection = useWorldStore((state) => state.selection);
   const selected = selection?.kind === "district" && selection.id === district.id;
+  const neon = theme === "neon";
+  const plateColor = neon ? shade(district.color, -0.42) : tint(district.color, 0.5);
+  const topColor = neon ? shade(district.color, -0.25) : tint(district.color, 0.6);
 
   return (
     <group position={[district.position.x, 0, district.position.z]}>
@@ -667,11 +706,11 @@ function DistrictBase({ district }: { district: District }) {
         }}
       >
         <boxGeometry args={[district.dimensions.width, 0.28, district.dimensions.depth]} />
-        <meshStandardMaterial color={tint(district.color, 0.5)} roughness={0.5} metalness={0} envMapIntensity={0.4} emissive="#ffffff" emissiveIntensity={selected ? 0.16 : 0} />
+        <meshStandardMaterial color={plateColor} roughness={neon ? 0.36 : 0.5} metalness={0} envMapIntensity={neon ? 0.9 : 0.4} emissive={neon ? neonize(district.color) : "#ffffff"} emissiveIntensity={neon ? (selected ? 0.44 : 0.16) : selected ? 0.16 : 0} />
       </mesh>
       <mesh position={[0, 0.17, 0]}>
         <boxGeometry args={[district.dimensions.width * 0.96, 0.05, district.dimensions.depth * 0.96]} />
-        <meshStandardMaterial color={tint(district.color, 0.6)} roughness={0.48} metalness={0} envMapIntensity={0.4} emissive="#ffffff" emissiveIntensity={selected ? 0.16 : 0} />
+        <meshStandardMaterial color={topColor} roughness={neon ? 0.32 : 0.48} metalness={0} envMapIntensity={neon ? 1 : 0.4} emissive={neon ? neonize(district.color) : "#ffffff"} emissiveIntensity={neon ? (selected ? 0.56 : 0.2) : selected ? 0.16 : 0} />
       </mesh>
       <SceneLabel position={{ x: 0, y: 0.58, z: -district.dimensions.depth / 2 + 0.72 }} tone="sector">
         {districtLabel(district.name)}
@@ -680,18 +719,19 @@ function DistrictBase({ district }: { district: District }) {
   );
 }
 
-function RoadMesh({ road }: { road: Road }) {
+function RoadMesh({ road, theme }: { road: Road; theme: SceneTheme }) {
   const setSelection = useWorldStore((state) => state.setSelection);
   const selection = useWorldStore((state) => state.selection);
   const [hovered, setHovered] = useState(false);
   const selected = selection?.kind === "road" && selection.id === road.id;
   const midpoint = roadMidpoint(road);
   const isConnector = road.kind === "connector";
+  const neon = theme === "neon";
   const roadY = isConnector ? 0.05 : 0.03;
   const roadHeight = 0.05;
   const roadWidth = road.width * 0.72;
-  const surfaceColor = selected ? "#9aa7bb" : isConnector ? "#7e8ca1" : "#6f7c8e";
-  const stripeColor = selected ? "#0f172a" : "#cdd6e4";
+  const surfaceColor = neon ? (selected ? "#1e3a8a" : isConnector ? "#10233f" : "#101827") : selected ? "#9aa7bb" : isConnector ? "#7e8ca1" : "#6f7c8e";
+  const stripeColor = neon ? (isConnector ? "#22d3ee" : "#a78bfa") : selected ? "#0f172a" : "#cdd6e4";
   const labelOffset = roadLabelOffset(road.id, isConnector ? 1.05 : 0.55);
 
   return (
@@ -722,11 +762,11 @@ function RoadMesh({ road }: { road: Road }) {
           >
             <mesh receiveShadow renderOrder={isConnector ? 2 : 1}>
               <boxGeometry args={[roadWidth, roadHeight, length]} />
-              <meshStandardMaterial color={surfaceColor} roughness={0.85} metalness={0} envMapIntensity={0.2} />
+              <meshStandardMaterial color={surfaceColor} roughness={neon ? 0.42 : 0.85} metalness={0} envMapIntensity={neon ? 0.9 : 0.2} emissive={neon ? "#0f172a" : "#000000"} emissiveIntensity={neon ? 0.42 : 0} />
             </mesh>
             <mesh position={[0, roadHeight / 2 + 0.012, 0]} renderOrder={isConnector ? 3 : 2}>
               <boxGeometry args={[0.06, 0.02, Math.max(0.3, length * 0.82)]} />
-              <meshStandardMaterial color={stripeColor} roughness={0.5} emissive="#ffffff" emissiveIntensity={selected ? 0 : 0.05} />
+              <meshStandardMaterial color={stripeColor} roughness={neon ? 0.18 : 0.5} emissive={neon ? stripeColor : "#ffffff"} emissiveIntensity={neon ? 0.9 : selected ? 0 : 0.05} />
             </mesh>
           </group>
         );
@@ -740,15 +780,17 @@ function RoadMesh({ road }: { road: Road }) {
   );
 }
 
-function BuildingMesh({ building }: { building: Building }) {
+function BuildingMesh({ building, theme }: { building: Building; theme: SceneTheme }) {
   const setSelection = useWorldStore((state) => state.setSelection);
   const selection = useWorldStore((state) => state.selection);
   const colorByLanguage = useWorldStore((state) => state.colorByLanguage);
   const highlightComplexity = useWorldStore((state) => state.highlightComplexity);
   const [hovered, setHovered] = useState(false);
   const selected = selection?.kind === "building" && selection.id === building.id;
-  const color = colorByLanguage ? building.color : "#94a3b8";
-  const glow = selected ? 0.26 : hovered ? 0.13 : 0;
+  const neon = theme === "neon";
+  const rawColor = colorByLanguage ? building.color : "#94a3b8";
+  const color = neon ? neonize(rawColor) : rawColor;
+  const glow = neon ? (selected ? 0.78 : hovered ? 0.46 : 0.18) : selected ? 0.26 : hovered ? 0.13 : 0;
   const accent = building.complexity >= 8 ? "#eb5757" : building.complexity >= 5 ? "#f2994a" : "#27ae60";
   const windowRows = useMemo(() => buildingWindowRows(building.dimensions.height), [building.dimensions.height]);
   const profile = useMemo(() => buildingProfile(building), [building]);
@@ -768,37 +810,37 @@ function BuildingMesh({ building }: { building: Building }) {
     >
       <mesh receiveShadow position={[0, -building.dimensions.height / 2 + 0.035, 0]}>
         <boxGeometry args={[building.dimensions.width * 1.08, 0.07, building.dimensions.depth * 1.08]} />
-        <meshStandardMaterial color={tint(color, 0.32)} roughness={0.46} metalness={0} envMapIntensity={0.5} />
+        <meshStandardMaterial color={neon ? "#0f172a" : tint(color, 0.32)} roughness={neon ? 0.32 : 0.46} metalness={0} envMapIntensity={neon ? 1 : 0.5} emissive={neon ? color : "#000000"} emissiveIntensity={neon ? 0.26 : 0} />
       </mesh>
       <mesh castShadow receiveShadow>
         <boxGeometry args={[building.dimensions.width, building.dimensions.height, building.dimensions.depth]} />
-        <meshStandardMaterial color={color} roughness={0.4} metalness={0} envMapIntensity={0.6} emissive="#ffffff" emissiveIntensity={glow} />
+        <meshStandardMaterial color={neon ? shade(color, -0.28) : color} roughness={neon ? 0.24 : 0.4} metalness={0} envMapIntensity={neon ? 1.25 : 0.6} emissive={neon ? color : "#ffffff"} emissiveIntensity={glow} />
       </mesh>
       {windowRows.map((y) => (
         <mesh key={y} position={[0, y, building.dimensions.depth / 2 + 0.018]}>
           <boxGeometry args={[building.dimensions.width * 0.62, 0.08, 0.035]} />
-          <meshStandardMaterial color={tint(color, 0.62)} roughness={0.18} metalness={0.1} envMapIntensity={1.1} emissive="#bcd4ff" emissiveIntensity={selected || hovered ? 0.4 : 0.16} />
+          <meshStandardMaterial color={neon ? "#e0f2fe" : tint(color, 0.62)} roughness={0.18} metalness={0.1} envMapIntensity={1.1} emissive={neon ? "#22d3ee" : "#bcd4ff"} emissiveIntensity={neon ? (selected || hovered ? 1.1 : 0.62) : selected || hovered ? 0.4 : 0.16} />
         </mesh>
       ))}
       {building.imports > 2 ? (
         <group position={[0, building.dimensions.height / 2 + 0.28, 0]}>
           <mesh castShadow>
             <cylinderGeometry args={[0.045, 0.045, 0.36, 10]} />
-            <meshStandardMaterial color="#f8fafc" roughness={0.38} />
+            <meshStandardMaterial color={neon ? "#e0f2fe" : "#f8fafc"} roughness={0.38} emissive={neon ? "#22d3ee" : "#000000"} emissiveIntensity={neon ? 0.35 : 0} />
           </mesh>
           <mesh castShadow position={[0, 0.23, 0]}>
             <sphereGeometry args={[0.13, 12, 8]} />
-            <meshStandardMaterial color={accent} roughness={0.4} />
+            <meshStandardMaterial color={neon ? neonize(accent) : accent} roughness={0.4} emissive={neon ? neonize(accent) : "#000000"} emissiveIntensity={neon ? 0.8 : 0} />
           </mesh>
         </group>
       ) : null}
-      <BuildingRoof building={building} profile={profile} selected={selected} hovered={hovered} />
-      {building.symbols >= 10 ? <SymbolStack building={building} color={accent} /> : null}
-      {building.todos > 0 ? <TodoScaffold building={building} todos={building.todos} /> : null}
+      <BuildingRoof building={building} profile={profile} selected={selected} hovered={hovered} theme={theme} />
+      {building.symbols >= 10 ? <SymbolStack building={building} color={accent} theme={theme} /> : null}
+      {building.todos > 0 ? <TodoScaffold building={building} todos={building.todos} theme={theme} /> : null}
       {highlightComplexity ? (
         <mesh position={[0, building.dimensions.height / 2 + 0.025, 0]}>
           <boxGeometry args={[building.dimensions.width * 0.92, 0.06, building.dimensions.depth * 0.92]} />
-          <meshStandardMaterial color={accent} roughness={0.48} />
+          <meshStandardMaterial color={neon ? neonize(accent) : accent} roughness={neon ? 0.22 : 0.48} emissive={neon ? neonize(accent) : "#000000"} emissiveIntensity={neon ? 0.9 : 0} />
         </mesh>
       ) : null}
       {selected || hovered ? <SceneLabel position={{ x: 0, y: building.dimensions.height / 2 + 0.58, z: 0 }}>{building.name}</SceneLabel> : null}
@@ -815,22 +857,26 @@ function BuildingRoof({
   building,
   profile,
   selected,
-  hovered
+  hovered,
+  theme
 }: {
   building: Building;
   profile: BuildingProfile;
   selected: boolean;
   hovered: boolean;
+  theme: SceneTheme;
 }) {
+  const neon = theme === "neon";
   const top = building.dimensions.height / 2;
-  const roofColor = selected || hovered ? tint(profile.roofColor, 0.14) : profile.roofColor;
-  const shine = selected ? 0.22 : hovered ? 0.12 : 0.04;
+  const roofBase = neon ? neonize(profile.roofColor) : profile.roofColor;
+  const roofColor = selected || hovered ? tint(roofBase, 0.14) : roofBase;
+  const shine = neon ? (selected ? 0.95 : hovered ? 0.7 : 0.38) : selected ? 0.22 : hovered ? 0.12 : 0.04;
 
   if (profile.role === "entry") {
     return (
       <mesh castShadow position={[0, top + 0.18, 0]} scale={[1, 0.46, 1]}>
         <sphereGeometry args={[Math.min(building.dimensions.width, building.dimensions.depth) * 0.44, 22, 12]} />
-        <meshStandardMaterial color={roofColor} roughness={0.28} metalness={0} envMapIntensity={0.9} emissive="#fff7cc" emissiveIntensity={shine} />
+        <meshStandardMaterial color={neon ? shade(roofColor, -0.16) : roofColor} roughness={neon ? 0.2 : 0.28} metalness={0} envMapIntensity={neon ? 1.25 : 0.9} emissive={neon ? roofColor : "#fff7cc"} emissiveIntensity={shine} />
       </mesh>
     );
   }
@@ -839,7 +885,7 @@ function BuildingRoof({
     return (
       <mesh castShadow position={[0, top + 0.22, 0]} rotation={[0, Math.PI / 4, 0]}>
         <coneGeometry args={[Math.min(building.dimensions.width, building.dimensions.depth) * 0.62, 0.44, 4]} />
-        <meshStandardMaterial color={roofColor} roughness={0.32} metalness={0} envMapIntensity={0.8} emissive="#ffffff" emissiveIntensity={shine} />
+        <meshStandardMaterial color={neon ? shade(roofColor, -0.18) : roofColor} roughness={neon ? 0.22 : 0.32} metalness={0} envMapIntensity={neon ? 1.2 : 0.8} emissive={neon ? roofColor : "#ffffff"} emissiveIntensity={shine} />
       </mesh>
     );
   }
@@ -849,11 +895,11 @@ function BuildingRoof({
       <group position={[0, top + 0.12, 0]}>
         <mesh castShadow>
           <boxGeometry args={[building.dimensions.width * 0.92, 0.14, building.dimensions.depth * 0.3]} />
-          <meshStandardMaterial color={roofColor} roughness={0.34} metalness={0} envMapIntensity={0.75} emissive="#dcfce7" emissiveIntensity={shine} />
+          <meshStandardMaterial color={neon ? shade(roofColor, -0.12) : roofColor} roughness={neon ? 0.2 : 0.34} metalness={0} envMapIntensity={neon ? 1.2 : 0.75} emissive={neon ? roofColor : "#dcfce7"} emissiveIntensity={shine} />
         </mesh>
         <mesh castShadow>
           <boxGeometry args={[building.dimensions.width * 0.3, 0.16, building.dimensions.depth * 0.92]} />
-          <meshStandardMaterial color="#f8fafc" roughness={0.3} metalness={0} envMapIntensity={0.75} />
+          <meshStandardMaterial color={neon ? "#cffafe" : "#f8fafc"} roughness={0.3} metalness={0} envMapIntensity={0.75} emissive={neon ? "#22d3ee" : "#000000"} emissiveIntensity={neon ? 0.5 : 0} />
         </mesh>
       </group>
     );
@@ -863,7 +909,7 @@ function BuildingRoof({
     return (
       <mesh castShadow position={[0, top + 0.1, 0]}>
         <cylinderGeometry args={[building.dimensions.width * 0.42, building.dimensions.width * 0.42, 0.18, 18]} />
-        <meshStandardMaterial color={roofColor} roughness={0.3} metalness={0} envMapIntensity={0.85} emissive="#ffffff" emissiveIntensity={shine} />
+        <meshStandardMaterial color={neon ? shade(roofColor, -0.12) : roofColor} roughness={neon ? 0.18 : 0.3} metalness={0} envMapIntensity={neon ? 1.3 : 0.85} emissive={neon ? roofColor : "#ffffff"} emissiveIntensity={shine} />
       </mesh>
     );
   }
@@ -872,7 +918,7 @@ function BuildingRoof({
     return (
       <mesh castShadow position={[0, top + 0.2, 0]}>
         <coneGeometry args={[Math.min(building.dimensions.width, building.dimensions.depth) * 0.54, 0.4, 3]} />
-        <meshStandardMaterial color={roofColor} roughness={0.26} metalness={0} envMapIntensity={0.95} emissive="#e0f2fe" emissiveIntensity={shine} />
+        <meshStandardMaterial color={neon ? shade(roofColor, -0.16) : roofColor} roughness={neon ? 0.18 : 0.26} metalness={0} envMapIntensity={neon ? 1.35 : 0.95} emissive={neon ? roofColor : "#e0f2fe"} emissiveIntensity={shine} />
       </mesh>
     );
   }
@@ -880,34 +926,36 @@ function BuildingRoof({
   return (
     <mesh castShadow position={[0, top + 0.08, 0]}>
       <boxGeometry args={[building.dimensions.width * 0.78, 0.14, building.dimensions.depth * 0.78]} />
-      <meshStandardMaterial color={roofColor} roughness={0.32} metalness={0} envMapIntensity={0.75} emissive="#ffffff" emissiveIntensity={shine} />
+      <meshStandardMaterial color={neon ? shade(roofColor, -0.16) : roofColor} roughness={neon ? 0.2 : 0.32} metalness={0} envMapIntensity={neon ? 1.2 : 0.75} emissive={neon ? roofColor : "#ffffff"} emissiveIntensity={shine} />
     </mesh>
   );
 }
 
-function SymbolStack({ building, color }: { building: Building; color: string }) {
+function SymbolStack({ building, color, theme }: { building: Building; color: string; theme: SceneTheme }) {
   const top = building.dimensions.height / 2;
   const plates = Math.min(4, Math.max(2, Math.ceil(building.symbols / 18)));
+  const neon = theme === "neon";
 
   return (
     <group position={[-building.dimensions.width * 0.3, top + 0.12, -building.dimensions.depth * 0.3]}>
       {Array.from({ length: plates }, (_, index) => (
         <mesh key={index} castShadow position={[0, index * 0.09, 0]}>
           <boxGeometry args={[building.dimensions.width * 0.34, 0.055, building.dimensions.depth * 0.34]} />
-          <meshStandardMaterial color={index % 2 === 0 ? color : "#f8fafc"} roughness={0.3} metalness={0} envMapIntensity={0.85} />
+          <meshStandardMaterial color={index % 2 === 0 ? (neon ? neonize(color) : color) : neon ? "#cffafe" : "#f8fafc"} roughness={neon ? 0.18 : 0.3} metalness={0} envMapIntensity={neon ? 1.1 : 0.85} emissive={neon ? (index % 2 === 0 ? neonize(color) : "#22d3ee") : "#000000"} emissiveIntensity={neon ? 0.45 : 0} />
         </mesh>
       ))}
     </group>
   );
 }
 
-function TodoScaffold({ building, todos }: { building: Building; todos: number }) {
+function TodoScaffold({ building, todos, theme }: { building: Building; todos: number; theme: SceneTheme }) {
   const width = building.dimensions.width + 0.42;
   const depth = building.dimensions.depth + 0.42;
   const height = building.dimensions.height + 0.58;
   const top = building.dimensions.height / 2 + 0.32;
-  const glow = clamp(todos * 0.05, 0.12, 0.36);
-  const materialProps = { color: "#f59e0b", roughness: 0.34, metalness: 0.05, envMapIntensity: 0.75, emissive: "#f59e0b", emissiveIntensity: glow };
+  const neon = theme === "neon";
+  const glow = clamp(todos * 0.05, neon ? 0.46 : 0.12, neon ? 1.05 : 0.36);
+  const materialProps = { color: neon ? "#facc15" : "#f59e0b", roughness: neon ? 0.18 : 0.34, metalness: 0.05, envMapIntensity: neon ? 1.1 : 0.75, emissive: neon ? "#f59e0b" : "#f59e0b", emissiveIntensity: glow };
 
   return (
     <group>
@@ -939,13 +987,124 @@ function TodoScaffold({ building, todos }: { building: Building; todos: number }
   );
 }
 
-function LandmarkMesh({ landmark }: { landmark: Landmark }) {
+function DecorativeLayer({ manifest, theme }: { manifest: WorldManifest; theme: SceneTheme }) {
+  const plan = useMemo(() => decorativePlan(manifest), [manifest]);
+
+  return (
+    <group>
+      {plan.towers.map((tower) => (
+        <PropTower key={tower.id} tower={tower} theme={theme} />
+      ))}
+      {plan.cranes.map((crane) => (
+        <ConstructionCrane key={crane.id} crane={crane} theme={theme} />
+      ))}
+    </group>
+  );
+}
+
+function PropTower({ tower, theme }: { tower: DecorativeTower; theme: SceneTheme }) {
+  const neon = theme === "neon";
+  const color = neon ? neonize(tower.color) : tower.color;
+  const accent = neon ? neonize(tower.accent) : tower.accent;
+  const top = tower.height / 2;
+  const tiers = tower.variant === "spire" ? 3 : tower.variant === "stack" ? 2 : 1;
+
+  return (
+    <group position={[tower.position.x, 0.22 + tower.height / 2, tower.position.z]} rotation={[0, tower.rotation, 0]}>
+      <mesh receiveShadow position={[0, -top - 0.045, 0]}>
+        <boxGeometry args={[tower.width * 1.24, 0.09, tower.depth * 1.24]} />
+        <meshStandardMaterial color={neon ? "#0f172a" : tint(color, 0.45)} roughness={neon ? 0.26 : 0.48} envMapIntensity={neon ? 1 : 0.45} emissive={neon ? accent : "#000000"} emissiveIntensity={neon ? 0.2 : 0} />
+      </mesh>
+      <mesh castShadow receiveShadow>
+        <boxGeometry args={[tower.width, tower.height, tower.depth]} />
+        <meshStandardMaterial color={neon ? shade(color, -0.3) : color} roughness={neon ? 0.22 : 0.44} envMapIntensity={neon ? 1.2 : 0.55} emissive={neon ? color : "#ffffff"} emissiveIntensity={neon ? 0.44 : 0.04} />
+      </mesh>
+      {Array.from({ length: tiers }, (_, index) => (
+        <mesh key={index} castShadow position={[0, top + 0.08 + index * 0.1, 0]}>
+          <boxGeometry args={[tower.width * (0.72 - index * 0.13), 0.09, tower.depth * (0.72 - index * 0.13)]} />
+          <meshStandardMaterial color={index % 2 === 0 ? accent : "#f8fafc"} roughness={neon ? 0.18 : 0.32} envMapIntensity={neon ? 1.2 : 0.7} emissive={neon ? accent : "#000000"} emissiveIntensity={neon ? 0.6 : 0} />
+        </mesh>
+      ))}
+      {tower.variant === "spire" ? (
+        <mesh castShadow position={[0, top + 0.42, 0]}>
+          <coneGeometry args={[Math.min(tower.width, tower.depth) * 0.38, 0.62, 4]} />
+          <meshStandardMaterial color={accent} roughness={neon ? 0.18 : 0.3} envMapIntensity={neon ? 1.3 : 0.7} emissive={neon ? accent : "#000000"} emissiveIntensity={neon ? 0.75 : 0} />
+        </mesh>
+      ) : null}
+      {buildingStudPositions(tower.width, tower.depth).map((point) => (
+        <mesh key={`${point.x}:${point.z}`} castShadow position={[point.x, top + STUD_HEIGHT / 2, point.z]}>
+          <cylinderGeometry args={[STUD_RADIUS * 0.9, STUD_RADIUS * 0.9, STUD_HEIGHT, 18]} />
+          <meshStandardMaterial color={accent} roughness={neon ? 0.18 : 0.34} envMapIntensity={neon ? 1.1 : 0.7} emissive={neon ? accent : "#000000"} emissiveIntensity={neon ? 0.46 : 0} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function ConstructionCrane({ crane, theme }: { crane: DecorativeCrane; theme: SceneTheme }) {
+  const armRef = useRef<THREE.Group>(null);
+  const hookRef = useRef<THREE.Group>(null);
+  const neon = theme === "neon";
+  const color = neon ? neonize(crane.color) : crane.color;
+  const accent = neon ? neonize(crane.accent) : crane.accent;
+
+  useFrame((state) => {
+    const elapsed = state.clock.elapsedTime;
+    if (armRef.current) {
+      armRef.current.rotation.y = crane.rotation + Math.sin(elapsed * 0.28 + crane.position.x * 0.03) * 0.28;
+    }
+    if (hookRef.current) {
+      hookRef.current.position.x = Math.sin(elapsed * 0.42 + crane.position.z * 0.02) * 0.9 + 1.9;
+      hookRef.current.position.y = -0.24 + Math.sin(elapsed * 0.7) * 0.12;
+    }
+  });
+
+  return (
+    <group position={[crane.position.x, 0.24, crane.position.z]}>
+      <mesh receiveShadow position={[0, 0.02, 0]}>
+        <boxGeometry args={[1.3, 0.12, 1.3]} />
+        <meshStandardMaterial color={neon ? "#0f172a" : "#e2e8f0"} roughness={0.38} emissive={neon ? "#164e63" : "#000000"} emissiveIntensity={neon ? 0.28 : 0} />
+      </mesh>
+      <mesh castShadow position={[0, crane.height / 2, 0]}>
+        <boxGeometry args={[0.22, crane.height, 0.22]} />
+        <meshStandardMaterial color={color} roughness={neon ? 0.2 : 0.38} envMapIntensity={neon ? 1.2 : 0.6} emissive={neon ? color : "#000000"} emissiveIntensity={neon ? 0.44 : 0} />
+      </mesh>
+      <mesh castShadow position={[0, crane.height + 0.08, 0]}>
+        <boxGeometry args={[0.52, 0.2, 0.52]} />
+        <meshStandardMaterial color={accent} roughness={neon ? 0.18 : 0.34} envMapIntensity={neon ? 1.2 : 0.7} emissive={neon ? accent : "#000000"} emissiveIntensity={neon ? 0.64 : 0} />
+      </mesh>
+      <group ref={armRef} position={[0, crane.height + 0.22, 0]} rotation={[0, crane.rotation, 0]}>
+        <mesh castShadow position={[1.65, 0, 0]}>
+          <boxGeometry args={[3.5, 0.12, 0.12]} />
+          <meshStandardMaterial color={accent} roughness={neon ? 0.18 : 0.34} envMapIntensity={neon ? 1.2 : 0.65} emissive={neon ? accent : "#000000"} emissiveIntensity={neon ? 0.7 : 0} />
+        </mesh>
+        <mesh castShadow position={[-0.72, 0, 0]}>
+          <boxGeometry args={[0.9, 0.18, 0.2]} />
+          <meshStandardMaterial color={color} roughness={neon ? 0.2 : 0.38} envMapIntensity={neon ? 1.1 : 0.55} emissive={neon ? color : "#000000"} emissiveIntensity={neon ? 0.42 : 0} />
+        </mesh>
+        <group ref={hookRef} position={[1.9, -0.24, 0]}>
+          <mesh position={[0, -0.34, 0]}>
+            <boxGeometry args={[0.035, 0.68, 0.035]} />
+            <meshStandardMaterial color={neon ? "#e0f2fe" : "#475569"} emissive={neon ? "#22d3ee" : "#000000"} emissiveIntensity={neon ? 0.55 : 0} />
+          </mesh>
+          <mesh castShadow position={[0, -0.77, 0]}>
+            <boxGeometry args={[0.34, 0.18, 0.24]} />
+            <meshStandardMaterial color={color} roughness={neon ? 0.2 : 0.42} emissive={neon ? color : "#000000"} emissiveIntensity={neon ? 0.55 : 0} />
+          </mesh>
+        </group>
+      </group>
+    </group>
+  );
+}
+
+function LandmarkMesh({ landmark, theme }: { landmark: Landmark; theme: SceneTheme }) {
   const setSelection = useWorldStore((state) => state.setSelection);
   const selection = useWorldStore((state) => state.selection);
   const [hovered, setHovered] = useState(false);
   const selected = selection?.kind === "landmark" && selection.id === landmark.id;
-  const color = landmark.color;
-  const glow = selected ? 0.26 : hovered ? 0.13 : 0;
+  const neon = theme === "neon";
+  const color = neon ? neonize(landmark.color) : landmark.color;
+  const glow = neon ? (selected ? 0.92 : hovered ? 0.58 : 0.18) : selected ? 0.26 : hovered ? 0.13 : 0;
 
   return (
     <group
@@ -962,28 +1121,28 @@ function LandmarkMesh({ landmark }: { landmark: Landmark }) {
     >
       <mesh receiveShadow position={[0, -landmark.dimensions.height / 2 + 0.06, 0]}>
         <boxGeometry args={[landmark.dimensions.width * 1.16, 0.12, landmark.dimensions.depth * 1.16]} />
-        <meshStandardMaterial color={tint(landmark.color, 0.5)} roughness={0.46} metalness={0} envMapIntensity={0.5} emissive="#ffffff" emissiveIntensity={glow * 0.6} />
+        <meshStandardMaterial color={neon ? "#0f172a" : tint(landmark.color, 0.5)} roughness={neon ? 0.28 : 0.46} metalness={0} envMapIntensity={neon ? 1 : 0.5} emissive={neon ? color : "#ffffff"} emissiveIntensity={neon ? glow * 0.8 : glow * 0.6} />
       </mesh>
       {landmark.kind === "automation_panel" ? (
         <mesh castShadow receiveShadow>
           <cylinderGeometry args={[landmark.dimensions.width / 2, landmark.dimensions.width / 2, landmark.dimensions.height, 24]} />
-          <meshStandardMaterial color={color} roughness={0.4} metalness={0} envMapIntensity={0.6} emissive="#ffffff" emissiveIntensity={glow} />
+          <meshStandardMaterial color={neon ? shade(color, -0.18) : color} roughness={neon ? 0.22 : 0.4} metalness={0} envMapIntensity={neon ? 1.2 : 0.6} emissive={neon ? color : "#ffffff"} emissiveIntensity={glow} />
         </mesh>
       ) : landmark.kind === "instruction_center" ? (
         <>
           <mesh castShadow receiveShadow position={[0, -0.1, 0]}>
             <boxGeometry args={[landmark.dimensions.width, landmark.dimensions.height * 0.72, landmark.dimensions.depth]} />
-            <meshStandardMaterial color={color} roughness={0.4} metalness={0} envMapIntensity={0.6} emissive="#ffffff" emissiveIntensity={glow} />
+            <meshStandardMaterial color={neon ? shade(color, -0.18) : color} roughness={neon ? 0.22 : 0.4} metalness={0} envMapIntensity={neon ? 1.2 : 0.6} emissive={neon ? color : "#ffffff"} emissiveIntensity={glow} />
           </mesh>
           <mesh castShadow position={[0, landmark.dimensions.height * 0.35, 0]} rotation={[0, Math.PI / 4, 0]}>
             <coneGeometry args={[landmark.dimensions.width * 0.62, landmark.dimensions.height * 0.6, 4]} />
-            <meshStandardMaterial color="#f4f7fb" roughness={0.42} metalness={0} envMapIntensity={0.6} />
+            <meshStandardMaterial color={neon ? "#ecfeff" : "#f4f7fb"} roughness={neon ? 0.24 : 0.42} metalness={0} envMapIntensity={neon ? 1 : 0.6} emissive={neon ? "#22d3ee" : "#000000"} emissiveIntensity={neon ? 0.36 : 0} />
           </mesh>
         </>
       ) : (
         <mesh castShadow receiveShadow>
           <boxGeometry args={[landmark.dimensions.width, landmark.dimensions.height, landmark.dimensions.depth]} />
-          <meshStandardMaterial color={color} roughness={0.4} metalness={0} envMapIntensity={0.6} emissive="#ffffff" emissiveIntensity={glow} />
+          <meshStandardMaterial color={neon ? shade(color, -0.18) : color} roughness={neon ? 0.22 : 0.4} metalness={0} envMapIntensity={neon ? 1.2 : 0.6} emissive={neon ? color : "#ffffff"} emissiveIntensity={glow} />
         </mesh>
       )}
       {selected || hovered ? <SceneLabel position={{ x: 0, y: landmark.dimensions.height / 2 + 0.58, z: 0 }}>{landmark.name}</SceneLabel> : null}
@@ -991,9 +1150,10 @@ function LandmarkMesh({ landmark }: { landmark: Landmark }) {
   );
 }
 
-function ConnectionLayer({ manifest }: { manifest: WorldManifest }) {
+function ConnectionLayer({ manifest, theme }: { manifest: WorldManifest; theme: SceneTheme }) {
   const flowRef = useRef<THREE.InstancedMesh>(null);
   const pulseObject = useMemo(() => new THREE.Object3D(), []);
+  const neon = theme === "neon";
   const { positions, flowPaths } = useMemo(() => {
     const buildingById = new Map(manifest.buildings.map((building) => [building.id, building]));
     const values: number[] = [];
@@ -1040,7 +1200,7 @@ function ConnectionLayer({ manifest }: { manifest: WorldManifest }) {
     flowPaths.forEach((path, index) => {
       const t = (elapsed * 0.22 + index * 0.071) % 1;
       const point = pointOnConnectionPath(path, t);
-      const scale = 0.08 + Math.sin((t + index * 0.17) * Math.PI) * 0.035;
+      const scale = (neon ? 0.11 : 0.08) + Math.sin((t + index * 0.17) * Math.PI) * (neon ? 0.055 : 0.035);
       pulseObject.position.set(point.x, point.y, point.z);
       pulseObject.scale.setScalar(scale);
       pulseObject.updateMatrix();
@@ -1059,12 +1219,12 @@ function ConnectionLayer({ manifest }: { manifest: WorldManifest }) {
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[positions, 3]} />
         </bufferGeometry>
-        <lineBasicMaterial color="#2563eb" transparent opacity={0.52} depthWrite={false} />
+        <lineBasicMaterial color={neon ? "#22d3ee" : "#2563eb"} transparent opacity={neon ? 0.76 : 0.52} depthWrite={false} />
       </lineSegments>
       {flowPaths.length > 0 ? (
         <instancedMesh ref={flowRef} args={[undefined, undefined, flowPaths.length]} renderOrder={2}>
           <sphereGeometry args={[1, 12, 8]} />
-          <meshStandardMaterial color="#38bdf8" emissive="#2563eb" emissiveIntensity={1.25} roughness={0.2} transparent opacity={0.86} depthWrite={false} />
+          <meshStandardMaterial color={neon ? "#67e8f9" : "#38bdf8"} emissive={neon ? "#22d3ee" : "#2563eb"} emissiveIntensity={neon ? 2.2 : 1.25} roughness={0.2} transparent opacity={neon ? 0.94 : 0.86} depthWrite={false} />
         </instancedMesh>
       ) : null}
     </>
@@ -1072,8 +1232,15 @@ function ConnectionLayer({ manifest }: { manifest: WorldManifest }) {
 }
 
 function SceneLabel({ children, position, tone = "default" }: { children: string; position: Vec3; tone?: "default" | "road" | "sector" }) {
+  const sceneTheme = useWorldStore((state) => state.sceneTheme);
   const className =
-    tone === "sector"
+    sceneTheme === "neon" && tone === "sector"
+      ? "origin-center max-w-24 rounded border border-cyan-300/70 bg-slate-950/88 px-1.5 py-0.5 text-center text-[8px] font-semibold leading-tight text-cyan-100 shadow-[0_0_18px_rgba(34,211,238,0.35)] sm:text-[10px]"
+      : sceneTheme === "neon" && tone === "road"
+        ? "origin-center rounded border border-fuchsia-300/70 bg-slate-950/88 px-2 py-0.5 text-center text-[8px] font-medium leading-tight text-fuchsia-100 shadow-[0_0_18px_rgba(217,70,239,0.35)] sm:text-[10px]"
+        : sceneTheme === "neon"
+          ? "origin-center rounded border border-cyan-200/70 bg-slate-950/90 px-2 py-1 text-center text-[9px] font-medium leading-tight text-cyan-50 shadow-[0_0_18px_rgba(34,211,238,0.35)] sm:text-[10px]"
+          : tone === "sector"
       ? "origin-center max-w-24 rounded border border-slate-300 bg-white/95 px-1.5 py-0.5 text-center text-[8px] font-semibold leading-tight text-slate-950 shadow-sm sm:text-[10px]"
       : tone === "road"
         ? "origin-center rounded border border-slate-400 bg-slate-900/88 px-2 py-0.5 text-center text-[8px] font-medium leading-tight text-white shadow-sm sm:text-[10px]"
@@ -1217,6 +1384,58 @@ function districtLabel(name: string): string {
   return name.replace(/\s+Baseplate$/i, "");
 }
 
+function decorativePlan(manifest: WorldManifest): { towers: DecorativeTower[]; cranes: DecorativeCrane[] } {
+  const bounds = manifestBounds(manifest);
+  const seed = hashString(`${manifest.repo.fullName}:${manifest.stats.files}:${manifest.stats.districts}`);
+  const colors = ["#38bdf8", "#f472b6", "#facc15", "#34d399", "#a78bfa", "#fb7185"];
+  const variants: DecorativeTower["variant"][] = ["stack", "kiosk", "spire"];
+  const count = clampInt(Math.ceil(manifest.districts.length * 0.9) + 2, 4, 10);
+  const towers: DecorativeTower[] = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const angle = ((index / count) * Math.PI * 2 + ((seed % 37) / 37) * Math.PI * 0.4) % (Math.PI * 2);
+    const distance = bounds.radius + 4.5 + (index % 3) * 1.25;
+    const height = roundTo(0.85 + ((seed >> (index % 13)) & 3) * 0.34 + (index % 2) * 0.28, 2);
+    const width = roundTo(0.9 + (index % 3) * 0.16, 2);
+    const depth = roundTo(0.82 + ((index + 1) % 3) * 0.18, 2);
+    const color = colors[(seed + index) % colors.length];
+    const accent = colors[(seed + index + 2) % colors.length];
+
+    towers.push({
+      id: `prop:tower:${index}`,
+      position: {
+        x: roundTo(bounds.center.x + Math.cos(angle) * distance, 2),
+        y: 0,
+        z: roundTo(bounds.center.z + Math.sin(angle) * distance, 2)
+      },
+      width,
+      depth,
+      height,
+      color,
+      accent,
+      rotation: roundTo(angle + Math.PI / 4, 3),
+      variant: variants[(seed + index) % variants.length]
+    });
+  }
+
+  const craneDistance = bounds.radius + 3.8;
+  const craneAngles = [Math.PI * 0.18 + (seed % 7) * 0.04, Math.PI * 1.18 + (seed % 5) * 0.05];
+  const cranes = craneAngles.map((angle, index) => ({
+    id: `prop:crane:${index}`,
+    position: {
+      x: roundTo(bounds.center.x + Math.cos(angle) * craneDistance, 2),
+      y: 0,
+      z: roundTo(bounds.center.z + Math.sin(angle) * craneDistance, 2)
+    },
+    rotation: roundTo(angle + Math.PI, 3),
+    height: roundTo(clamp(bounds.radius * 0.1 + 2.1 + index * 0.35, 2.1, 4.4), 2),
+    color: index % 2 === 0 ? "#facc15" : "#fb7185",
+    accent: index % 2 === 0 ? "#22d3ee" : "#a78bfa"
+  }));
+
+  return { towers, cranes };
+}
+
 function roundTo(value: number, precision: number): number {
   const factor = 10 ** precision;
   return Math.round(value * factor) / factor;
@@ -1277,6 +1496,35 @@ function tint(hex: string, amount: number): string {
   const g = Math.min(255, Math.round(((value >> 8) & 255) + (255 - ((value >> 8) & 255)) * amount));
   const b = Math.min(255, Math.round((value & 255) + (255 - (value & 255)) * amount));
   return `#${[r, g, b].map((part) => part.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function shade(hex: string, amount: number): string {
+  const clean = hex.replace("#", "");
+  const value = Number.parseInt(clean.length === 3 ? clean.split("").map((char) => char + char).join("") : clean, 16);
+  const channels = [(value >> 16) & 255, (value >> 8) & 255, value & 255].map((channel) => {
+    if (amount >= 0) {
+      return Math.min(255, Math.round(channel + (255 - channel) * amount));
+    }
+    return Math.max(0, Math.round(channel * (1 + amount)));
+  });
+  return `#${channels.map((part) => part.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function neonize(hex: string): string {
+  const color = new THREE.Color(hex);
+  const hsl = { h: 0, s: 0, l: 0 };
+  color.getHSL(hsl);
+  color.setHSL(hsl.h, clamp(hsl.s * 1.35 + 0.12, 0.55, 1), clamp(hsl.l * 1.18 + 0.12, 0.5, 0.78));
+  return `#${color.getHexString()}`;
+}
+
+function hashString(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
 function roadMidpoint(road: Road): Vec3 {

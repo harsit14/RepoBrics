@@ -37,6 +37,8 @@ See `docs/analysis-followup-plan.md` for the analysis-driven roadmap. The active
 
 The second follow-up pass adds navigation and signal cleanup: file search with click-to-focus, a lightweight minimap, and connector roads generated only from cross-district repo-local imports.
 
+The third visual pass adds a neon scene theme, app-shell theme styling, deterministic prop buildings, and animated decorative cranes around the generated city.
+
 ## Public Interfaces
 
 - `POST /api/analyze`

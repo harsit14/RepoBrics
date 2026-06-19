@@ -36,6 +36,12 @@ test("toolbar toggles update their pressed state", async ({ page }) => {
   await expect(streetToggle).toHaveAttribute("aria-pressed", "false");
   await streetToggle.click();
   await expect(streetToggle).toHaveAttribute("aria-pressed", "true");
+
+  const neonToggle = page.getByRole("button", { name: "Toggle neon theme" });
+  await expect(neonToggle).toHaveAttribute("aria-pressed", "false");
+  await neonToggle.click();
+  await expect(neonToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("main")).toHaveAttribute("data-scene-theme", "neon");
 });
 
 test("canvas output is nonblank", async ({ page }) => {
