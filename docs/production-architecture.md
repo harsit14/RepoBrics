@@ -78,15 +78,35 @@ create index analysis_artifacts_job_idx
 Railway worker variables:
 
 ```text
+RAILWAY_DOCKERFILE_PATH=Dockerfile.worker
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
+REPOBRICKS_JOB_BACKEND=supabase
 REPOBRICKS_ARTIFACT_BUCKET=analysis-artifacts
 REPOBRICKS_MAX_RENDERED_FILES=10000
 REPOBRICKS_MAX_HISTORY_FRAMES=120
-REPOBRICKS_JOB_CONCURRENCY=1
+REPOBRICKS_WORKER_POLL_MS=5000
 ```
 
-Keep concurrency conservative at first. Git operations are bursty on CPU, disk, and network; one worker instance with concurrency `1` is easier to reason about and scale horizontally later.
+Keep Railway worker replica count conservative at first. Git operations are bursty on CPU, disk, and network; one replica is easier to reason about and scale horizontally later.
+
+## Deployment Checklist
+
+1. Create a Supabase project.
+2. Run `supabase/migrations/001_analysis_jobs.sql` in Supabase SQL editor or through the Supabase CLI.
+3. Confirm the private `analysis-artifacts` storage bucket exists.
+4. Create a Railway web service from this repo:
+   - Build command: `npm run build`
+   - Start command: `npm run start`
+   - Variables: `REPOBRICKS_JOB_BACKEND=supabase`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `REPOBRICKS_ARTIFACT_BUCKET=analysis-artifacts`
+5. Create a second Railway worker service from the same repo:
+   - Variable: `RAILWAY_DOCKERFILE_PATH=Dockerfile.worker`
+   - Start command is provided by the Dockerfile: `npm run worker:railway`
+   - Use the same Supabase variables as the web service.
+6. Open the Railway web URL, submit a small public GitHub repo, and confirm:
+   - a job row is created in `analysis_jobs`
+   - artifacts are uploaded under `analysis-artifacts/{jobId}/`
+   - the UI streams sectors and, when enabled, shows the git history timeline.
 
 ## Artifact Strategy
 
@@ -105,8 +125,7 @@ owner/repo + branch + HEAD sha + analyzer version + options hash
 
 ## Next Implementation Steps
 
-1. Add a dedicated Railway worker package/script that claims queued Supabase jobs.
-2. Replace local file artifact storage with Supabase Storage or Cloudflare R2.
-3. Add cache lookup by repo HEAD sha before creating a new job.
-4. Add signed artifact URLs and CDN cache headers.
-5. Persist user-facing job history and shareable world links.
+1. Add cache lookup by repo HEAD sha before creating a new job.
+2. Add signed artifact URLs and CDN cache headers.
+3. Persist user-facing job history and shareable world links.
+4. Add a Cloudflare Pages static frontend split only if we decide the extra API/CORS layer is worth it.

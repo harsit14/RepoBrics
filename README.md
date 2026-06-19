@@ -92,9 +92,11 @@ http://localhost:3000/?demo=1&theme=neon
 ```bash
 npm run dev       # Start the Next.js app
 npm run build     # Production build and type check
+npm run start     # Start the production Next.js server
 npm run lint      # ESLint with zero warnings
 npm run test      # Vitest unit tests
 npm run test:e2e  # Playwright browser tests
+npm run worker:railway # Run the Railway analyzer worker
 ```
 
 ## How It Works
@@ -115,10 +117,22 @@ npm run test:e2e  # Playwright browser tests
 - React Three Fiber, Drei, and Three.js for the 3D renderer
 - Zustand for scene state, selection, toggles, and camera modes
 - File-backed local analysis jobs that mirror the planned Railway worker/Supabase queue shape
+- Supabase-backed production queue/storage adapter for Railway deployment
 - Vitest for analyzer/API behavior
 - Playwright for browser and canvas smoke tests
 
 See `docs/production-architecture.md` for the Railway analyzer worker and Supabase artifact-storage plan.
+
+## Deployment
+
+The production path is Railway for the Next web/API service plus a separate Railway analyzer worker, both backed by Supabase.
+
+- Environment template: `.env.example`
+- Supabase migration: `supabase/migrations/001_analysis_jobs.sql`
+- Worker Dockerfile: `Dockerfile.worker`
+- Worker command: `npm run worker:railway`
+
+Set `REPOBRICKS_JOB_BACKEND=supabase` in deployed services so API routes use Supabase instead of the local file-backed job runner.
 
 ## Current Limits
 

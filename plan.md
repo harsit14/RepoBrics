@@ -43,6 +43,8 @@ The fourth infrastructure pass adds async analysis jobs, streamable world artifa
 
 The fifth streaming pass adds viewport-prioritized chunk loading, partial-manifest rendering from active chunks, camera-following chunk prefetch, and a visible git history timeline with changed-file highlighting.
 
+The sixth deployment pass adds a Supabase-backed queue and artifact store, a Railway worker entrypoint, worker Dockerfile, Supabase migration, production env template, and a production dependency audit fix for the Next/PostCSS release line.
+
 ## Public Interfaces
 
 - `POST /api/analyze`
