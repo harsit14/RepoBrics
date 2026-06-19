@@ -6,7 +6,7 @@ import { AlertTriangle, Box, Footprints, Github, HelpCircle, Layers3, Loader2, N
 import { demoManifest } from "@/lib/demoManifest";
 import { Inspector } from "@/components/Inspector";
 import { useWorldStore } from "@/store/useWorldStore";
-import type { WorldManifest } from "@/types/world";
+import type { Building, Selection, Vec3, WorldManifest } from "@/types/world";
 
 const DEFAULT_REPO = "https://github.com/vercel/swr";
 const WorldCanvas = dynamic(() => import("@/components/WorldCanvas").then((mod) => mod.WorldCanvas), {
@@ -19,6 +19,7 @@ export function RepoBricksApp() {
   const [manifest, setManifest] = useState<WorldManifest | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fileSearch, setFileSearch] = useState("");
   const selection = useWorldStore((state) => state.selection);
   const setSelection = useWorldStore((state) => state.setSelection);
   const showDependencies = useWorldStore((state) => state.showDependencies);
@@ -40,6 +41,7 @@ export function RepoBricksApp() {
     if (params.has("demo")) {
       setManifest(demoManifest);
       setRepoUrl(demoManifest.repo.url);
+      setFileSearch("");
     }
   }, []);
 
@@ -101,6 +103,33 @@ export function RepoBricksApp() {
     return source.name;
   }, [manifest, selection]);
 
+  const searchResults = useMemo(() => {
+    const query = fileSearch.trim().toLowerCase();
+    if (!manifest || query.length === 0) {
+      return [];
+    }
+
+    return manifest.buildings
+      .filter((building) => {
+        const path = building.path.toLowerCase();
+        const name = building.name.toLowerCase();
+        const language = building.language.toLowerCase();
+        return path.includes(query) || name.includes(query) || language.includes(query);
+      })
+      .sort((a, b) => searchScore(a, query) - searchScore(b, query) || a.path.localeCompare(b.path))
+      .slice(0, 8);
+  }, [fileSearch, manifest]);
+
+  function focusSelection(nextSelection: NonNullable<Selection>) {
+    setSelection(nextSelection);
+    setViewMode("overview");
+  }
+
+  function focusBuilding(building: Building) {
+    focusSelection({ kind: "building", id: building.id });
+    setFileSearch("");
+  }
+
   async function analyzeRepo(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const target = repoUrl.trim() || DEFAULT_REPO;
@@ -108,6 +137,7 @@ export function RepoBricksApp() {
     setError(null);
     setIsLoading(true);
     setSelection(null);
+    setFileSearch("");
 
     try {
       const response = await fetch("/api/analyze", {
@@ -243,6 +273,13 @@ export function RepoBricksApp() {
         <div className="relative min-h-[58vh] flex-1 md:min-h-0">
           <WorldCanvas manifest={manifest} isLoading={isLoading} />
 
+          {manifest ? (
+            <>
+              <WorldSearch query={fileSearch} results={searchResults} onQueryChange={setFileSearch} onSelect={focusBuilding} />
+              <WorldMinimap manifest={manifest} selection={selection} onSelect={focusSelection} />
+            </>
+          ) : null}
+
           {!manifest && !isLoading ? (
             <div className="pointer-events-none absolute inset-x-4 top-5 mx-auto max-w-md rounded-lg border border-slate-200 bg-white/94 p-4 text-sm text-slate-600 shadow-panel backdrop-blur">
               <div className="flex items-start gap-3">
@@ -283,6 +320,153 @@ export function RepoBricksApp() {
         <Inspector manifest={manifest} selection={selection} />
       </section>
     </main>
+  );
+}
+
+function WorldSearch({
+  query,
+  results,
+  onQueryChange,
+  onSelect
+}: {
+  query: string;
+  results: Building[];
+  onQueryChange: (value: string) => void;
+  onSelect: (building: Building) => void;
+}) {
+  return (
+    <div className="absolute left-3 right-3 top-3 z-10 sm:right-auto sm:w-80">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} aria-hidden="true" />
+        <input
+          className="h-9 w-full rounded-md border border-slate-200 bg-white/95 pl-9 pr-3 text-sm text-slate-950 shadow-sm outline-none backdrop-blur placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Find file"
+          aria-label="Search files"
+        />
+      </div>
+      {query.trim().length > 0 ? (
+        <div className="mt-2 max-h-72 overflow-auto rounded-md border border-slate-200 bg-white/96 p-1 shadow-panel backdrop-blur">
+          {results.length === 0 ? <p className="px-3 py-2 text-sm text-slate-500">No matches</p> : null}
+          {results.map((building) => (
+            <button
+              key={building.id}
+              className="flex w-full items-center justify-between gap-3 rounded px-3 py-2 text-left text-sm transition hover:bg-slate-100 focus:bg-slate-100 focus:outline-none"
+              onClick={() => onSelect(building)}
+              type="button"
+            >
+              <span className="min-w-0">
+                <span className="block truncate font-medium text-slate-950">{building.name}</span>
+                <span className="block truncate text-xs text-slate-500">{building.path}</span>
+              </span>
+              <span className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold text-white" style={{ background: building.color }}>
+                {languageInitials(building.language)}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function WorldMinimap({
+  manifest,
+  selection,
+  onSelect
+}: {
+  manifest: WorldManifest;
+  selection: Selection;
+  onSelect: (selection: NonNullable<Selection>) => void;
+}) {
+  const map = useMemo(() => minimapProjection(manifest), [manifest]);
+  const selectedPoint = useMemo(() => selectionPoint(manifest, selection, map.project), [manifest, map.project, selection]);
+
+  function handlePointer(event: React.MouseEvent<SVGSVGElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const local = {
+      x: ((event.clientX - rect.left) / rect.width) * map.width,
+      y: ((event.clientY - rect.top) / rect.height) * map.height
+    };
+    const world = map.unproject(local);
+    const nearest = nearestMapSelection(manifest, world);
+    if (nearest) {
+      onSelect(nearest);
+    }
+  }
+
+  return (
+    <div className="absolute left-3 top-[4.25rem] z-10 w-32 rounded-lg border border-slate-200 bg-white/92 p-2 shadow-panel backdrop-blur sm:left-auto sm:right-3 sm:top-3 sm:w-44">
+      <div className="mb-1 flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+        <span>Map</span>
+        <span>{manifest.stats.districts}</span>
+      </div>
+      <svg
+        className="h-auto w-full cursor-crosshair overflow-visible rounded border border-slate-200 bg-slate-50"
+        viewBox={`0 0 ${map.width} ${map.height}`}
+        role="button"
+        aria-label="Repository minimap"
+        tabIndex={0}
+        onClick={handlePointer}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            if (selection) {
+              onSelect(selection);
+            } else if (manifest.districts[0]) {
+              onSelect({ kind: "district", id: manifest.districts[0].id });
+            }
+          }
+        }}
+      >
+        {manifest.roads.map((road) => (
+          <polyline
+            key={road.id}
+            fill="none"
+            points={road.points.map((point) => `${map.project(point).x},${map.project(point).y}`).join(" ")}
+            stroke={road.kind === "connector" ? "#64748b" : "#94a3b8"}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={road.kind === "connector" ? 1.8 : 1.2}
+            opacity={road.kind === "connector" ? 0.85 : 0.6}
+          />
+        ))}
+        {manifest.districts.map((district) => {
+          const topLeft = map.project({
+            x: district.position.x - district.dimensions.width / 2,
+            y: 0,
+            z: district.position.z - district.dimensions.depth / 2
+          });
+          const bottomRight = map.project({
+            x: district.position.x + district.dimensions.width / 2,
+            y: 0,
+            z: district.position.z + district.dimensions.depth / 2
+          });
+          const selected = selection?.kind === "district" && selection.id === district.id;
+          return (
+            <rect
+              key={district.id}
+              x={Math.min(topLeft.x, bottomRight.x)}
+              y={Math.min(topLeft.y, bottomRight.y)}
+              width={Math.abs(bottomRight.x - topLeft.x)}
+              height={Math.abs(bottomRight.y - topLeft.y)}
+              rx={1.8}
+              fill={miniTint(district.color)}
+              stroke={selected ? "#0f172a" : district.color}
+              strokeWidth={selected ? 2.2 : 1.1}
+              opacity={0.88}
+            />
+          );
+        })}
+        {manifest.buildings.map((building) => {
+          const point = map.project(building.position);
+          const selected = selection?.kind === "building" && selection.id === building.id;
+          return <circle key={building.id} cx={point.x} cy={point.y} r={selected ? 2.8 : 1.7} fill={building.color} stroke={selected ? "#0f172a" : "#ffffff"} strokeWidth={selected ? 1.2 : 0.6} />;
+        })}
+        {selectedPoint ? <circle cx={selectedPoint.x} cy={selectedPoint.y} r={4.5} fill="none" stroke="#0ea5e9" strokeWidth={1.6} /> : null}
+      </svg>
+    </div>
   );
 }
 
@@ -330,6 +514,151 @@ function ControlsHelp({ viewMode, onClose }: { viewMode: "overview" | "street" |
       </dl>
     </div>
   );
+}
+
+const MINIMAP_WIDTH = 160;
+const MINIMAP_HEIGHT = 108;
+const MINIMAP_PADDING = 9;
+
+function searchScore(building: Building, query: string): number {
+  const name = building.name.toLowerCase();
+  const path = building.path.toLowerCase();
+  const language = building.language.toLowerCase();
+
+  if (name === query) return 0;
+  if (name.startsWith(query)) return 1;
+  if (path.startsWith(query)) return 2;
+  if (path.includes(`/${query}`)) return 3;
+  if (path.includes(query)) return 4;
+  if (language.includes(query)) return 5;
+  return 6;
+}
+
+function languageInitials(language: string): string {
+  const words = language.split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return "?";
+  }
+  if (words.length === 1) {
+    return words[0].slice(0, 2).toUpperCase();
+  }
+  return words
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function minimapProjection(manifest: WorldManifest): {
+  width: number;
+  height: number;
+  project: (point: Vec3) => { x: number; y: number };
+  unproject: (point: { x: number; y: number }) => Vec3;
+} {
+  const districtPoints = manifest.districts.flatMap((district) => {
+    const halfWidth = district.dimensions.width / 2;
+    const halfDepth = district.dimensions.depth / 2;
+    return [
+      { x: district.position.x - halfWidth, y: 0, z: district.position.z - halfDepth },
+      { x: district.position.x + halfWidth, y: 0, z: district.position.z + halfDepth }
+    ];
+  });
+  const points = [...districtPoints, ...manifest.roads.flatMap((road) => road.points)];
+  if (points.length === 0) {
+    return {
+      width: MINIMAP_WIDTH,
+      height: MINIMAP_HEIGHT,
+      project: () => ({ x: MINIMAP_WIDTH / 2, y: MINIMAP_HEIGHT / 2 }),
+      unproject: () => ({ x: 0, y: 0, z: 0 })
+    };
+  }
+
+  const minX = Math.min(...points.map((point) => point.x));
+  const maxX = Math.max(...points.map((point) => point.x));
+  const minZ = Math.min(...points.map((point) => point.z));
+  const maxZ = Math.max(...points.map((point) => point.z));
+  const spanX = Math.max(maxX - minX, 1);
+  const spanZ = Math.max(maxZ - minZ, 1);
+  const scale = Math.min((MINIMAP_WIDTH - MINIMAP_PADDING * 2) / spanX, (MINIMAP_HEIGHT - MINIMAP_PADDING * 2) / spanZ);
+  const offsetX = (MINIMAP_WIDTH - spanX * scale) / 2;
+  const offsetY = (MINIMAP_HEIGHT - spanZ * scale) / 2;
+
+  return {
+    width: MINIMAP_WIDTH,
+    height: MINIMAP_HEIGHT,
+    project: (point) => ({
+      x: offsetX + (point.x - minX) * scale,
+      y: offsetY + (point.z - minZ) * scale
+    }),
+    unproject: (point) => ({
+      x: minX + (point.x - offsetX) / scale,
+      y: 0,
+      z: minZ + (point.y - offsetY) / scale
+    })
+  };
+}
+
+function selectionPoint(manifest: WorldManifest, selection: Selection, project: (point: Vec3) => { x: number; y: number }) {
+  if (!selection) {
+    return null;
+  }
+
+  if (selection.kind === "building") {
+    const building = manifest.buildings.find((item) => item.id === selection.id);
+    return building ? project(building.position) : null;
+  }
+  if (selection.kind === "district") {
+    const district = manifest.districts.find((item) => item.id === selection.id);
+    return district ? project(district.position) : null;
+  }
+  if (selection.kind === "landmark") {
+    const landmark = manifest.landmarks.find((item) => item.id === selection.id);
+    return landmark ? project(landmark.position) : null;
+  }
+  if (selection.kind === "road") {
+    const road = manifest.roads.find((item) => item.id === selection.id);
+    return road ? project(road.points[Math.floor(road.points.length / 2)] ?? road.points[0]) : null;
+  }
+
+  const connection = manifest.connections.find((item) => item.id === selection.id);
+  const from = manifest.buildings.find((building) => building.id === connection?.from);
+  const to = manifest.buildings.find((building) => building.id === connection?.to);
+  if (!from || !to) {
+    return null;
+  }
+  return project({ x: (from.position.x + to.position.x) / 2, y: 0, z: (from.position.z + to.position.z) / 2 });
+}
+
+function nearestMapSelection(manifest: WorldManifest, world: Vec3): NonNullable<Selection> | null {
+  const candidates: Array<{ selection: NonNullable<Selection>; position: Vec3; bias: number }> = [
+    ...manifest.buildings.map((building) => ({
+      selection: { kind: "building" as const, id: building.id },
+      position: building.position,
+      bias: 0
+    })),
+    ...manifest.districts.map((district) => ({
+      selection: { kind: "district" as const, id: district.id },
+      position: district.position,
+      bias: Math.max(district.dimensions.width, district.dimensions.depth) * 0.14
+    }))
+  ];
+
+  return (
+    candidates
+      .map((candidate) => ({
+        ...candidate,
+        distance: Math.hypot(candidate.position.x - world.x, candidate.position.z - world.z) - candidate.bias
+      }))
+      .sort((a, b) => a.distance - b.distance)[0]?.selection ?? null
+  );
+}
+
+function miniTint(hex: string): string {
+  const clean = hex.replace("#", "");
+  const value = Number.parseInt(clean.length === 3 ? clean.split("").map((char) => char + char).join("") : clean, 16);
+  const red = Math.min(255, Math.round(((value >> 16) & 255) + (255 - ((value >> 16) & 255)) * 0.72));
+  const green = Math.min(255, Math.round(((value >> 8) & 255) + (255 - ((value >> 8) & 255)) * 0.72));
+  const blue = Math.min(255, Math.round((value & 255) + (255 - (value & 255)) * 0.72));
+  return `#${[red, green, blue].map((part) => part.toString(16).padStart(2, "0")).join("")}`;
 }
 
 const NAVIGATION_KEYS = new Set([

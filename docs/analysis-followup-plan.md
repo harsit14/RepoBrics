@@ -17,20 +17,27 @@ These items are high-impact, low-risk, and build directly on the current manifes
 7. Animate dependency flow pulses so imports feel alive without changing layout.
 8. Make studs slightly more pronounced so the brick metaphor reads from overview and street view.
 
+## Second Pass Shipped
+
+The next practical items from the analysis are now included:
+
+1. Search and fly-to navigation for large repos.
+2. Lightweight minimap with district outlines, road lines, file dots, and selected-item marker.
+3. Connector roads only between districts that actually share repo-local imports.
+4. Stronger Playwright coverage for search, minimap visibility, and real scene pixels.
+
 ## Deferred Follow-Ups
 
 These are good ideas, but they need separate design or data-model work:
 
-1. Search and fly-to navigation for large repos.
-2. Minimap with top-down district outlines and current camera heading.
-3. Roads only between districts that actually share imports.
-4. Dark/neon theme toggle with emissive materials.
-5. AI file summaries in the inspector.
-6. glTF scene export.
-7. Branch/repo comparison and code-review diff overlays.
-8. Git history time-lapse.
-9. Progressive district streaming for repositories beyond the current render cap.
-10. Code-smell damage system for circular dependencies, god files, and deep nesting.
+1. Minimap camera heading and frustum.
+2. Dark/neon theme toggle with emissive materials.
+3. AI file summaries in the inspector.
+4. glTF scene export.
+5. Branch/repo comparison and code-review diff overlays.
+6. Git history time-lapse.
+7. Progressive district streaming for repositories beyond the current render cap.
+8. Code-smell damage system for circular dependencies, god files, and deep nesting.
 
 ## Visual Experiments To Validate Later
 

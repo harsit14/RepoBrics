@@ -41,9 +41,9 @@ describe("analyzer", () => {
     expect(manifest.repo.fullName).toBe("demo/sample-repo");
     expect(manifest.stats.files).toBe(9);
     expect(manifest.districts.map((district) => district.id)).toEqual(["src", "root", ".github", "docs", "tests"]);
-    expect(manifest.stats.roads).toBe(9);
+    expect(manifest.stats.roads).toBe(6);
     expect(manifest.roads.map((road) => road.name)).toEqual(
-      expect.arrayContaining(["Src Lane", "Root Baseplate Lane", "Docs Lane", "Tests Lane"])
+      expect.arrayContaining(["Src Lane", "Root Baseplate Lane", "Docs Lane", "Tests Lane", "Src to Tests Route"])
     );
     expect(manifest.landmarks.map((landmark) => landmark.kind)).toEqual([
       "automation_panel",

@@ -131,7 +131,7 @@ export async function analyzeRepositoryPath(repoPath: string, options: AnalyzeOp
   const landmarks = buildLandmarks(layout, repoInfo);
   const districts = buildDistricts(layout);
   const connections = buildConnections(records, buildings, pathSet);
-  const roads = buildRoads(districts);
+  const roads = buildRoads(districts, records, pathSet);
   const languageStats = aggregateLanguages(records);
 
   return {
@@ -504,13 +504,15 @@ function buildConnections(records: FileRecord[], buildings: Building[], pathSet:
   return output.sort((a, b) => a.fromPath.localeCompare(b.fromPath) || a.toPath.localeCompare(b.toPath));
 }
 
-function buildRoads(districts: District[]): Road[] {
+function buildRoads(districts: District[], records: FileRecord[], pathSet: Set<string>): Road[] {
   const sorted = [...districts].sort((a, b) => a.position.z - b.position.z || a.position.x - b.position.x || a.id.localeCompare(b.id));
   const roads: Road[] = [];
+  const districtById = new Map(districts.map((district) => [district.id, district]));
+  const recordByPath = new Map(records.map((record) => [record.path, record]));
 
   for (const district of sorted) {
     const halfWidth = district.dimensions.width / 2;
-    const z = district.position.z + district.dimensions.depth / 2 + 1.25;
+    const z = roadLaneZ(district);
     roads.push({
       id: `road:${district.id}:lane`,
       name: `${district.name} Lane`,
@@ -524,31 +526,77 @@ function buildRoads(districts: District[]): Road[] {
     });
   }
 
-  for (let index = 1; index < sorted.length; index += 1) {
-    const previous = sorted[index - 1];
-    const next = sorted[index];
-    const startZ = previous.position.z + previous.dimensions.depth / 2 + 1.25;
-    const endZ = next.position.z + next.dimensions.depth / 2 + 1.25;
-    const midX = round((previous.position.x + next.position.x) / 2);
-    const name = `${previous.name} Connector`;
+  const districtOrder = new Map(sorted.map((district, index) => [district.id, index]));
+  const linkedDistricts = new Map<string, { from: District; to: District; count: number }>();
+
+  for (const record of records) {
+    for (const spec of record.importSpecs) {
+      const targetPath = resolveImportPath(record.path, spec, pathSet);
+      const target = targetPath ? recordByPath.get(targetPath) : undefined;
+      if (!target || target.path === record.path || target.districtId === record.districtId) {
+        continue;
+      }
+
+      const fromDistrict = districtById.get(record.districtId);
+      const toDistrict = districtById.get(target.districtId);
+      if (!fromDistrict || !toDistrict) {
+        continue;
+      }
+
+      const orderedPair = orderDistrictPair(fromDistrict, toDistrict, districtOrder);
+      const key = `${orderedPair.from.id}:${orderedPair.to.id}`;
+      const existing = linkedDistricts.get(key);
+      linkedDistricts.set(key, {
+        ...orderedPair,
+        count: (existing?.count ?? 0) + 1
+      });
+    }
+  }
+
+  const connectors = [...linkedDistricts.values()].sort(
+    (a, b) => (districtOrder.get(a.from.id) ?? 0) - (districtOrder.get(b.from.id) ?? 0) || (districtOrder.get(a.to.id) ?? 0) - (districtOrder.get(b.to.id) ?? 0)
+  );
+
+  for (const connector of connectors) {
+    const startZ = roadLaneZ(connector.from);
+    const endZ = roadLaneZ(connector.to);
+    const midX = round((connector.from.position.x + connector.to.position.x) / 2);
 
     roads.push({
-      id: `road:${previous.id}:${next.id}`,
-      name,
+      id: `road:${connector.from.id}:${connector.to.id}`,
+      name: `${connector.from.name} to ${connector.to.name} Route`,
       kind: "connector",
-      fromDistrictId: previous.id,
-      toDistrictId: next.id,
+      fromDistrictId: connector.from.id,
+      toDistrictId: connector.to.id,
       points: [
-        { x: round(previous.position.x), y: 0.06, z: round(startZ) },
+        { x: round(connector.from.position.x), y: 0.06, z: round(startZ) },
         { x: midX, y: 0.06, z: round(startZ) },
         { x: midX, y: 0.06, z: round(endZ) },
-        { x: round(next.position.x), y: 0.06, z: round(endZ) }
+        { x: round(connector.to.position.x), y: 0.06, z: round(endZ) }
       ],
       width: 1.05
     });
   }
 
   return roads;
+}
+
+function roadLaneZ(district: District): number {
+  return district.position.z + district.dimensions.depth / 2 + 1.25;
+}
+
+function orderDistrictPair(
+  first: District,
+  second: District,
+  order: Map<string, number>
+): { from: District; to: District } {
+  const firstOrder = order.get(first.id) ?? 0;
+  const secondOrder = order.get(second.id) ?? 0;
+
+  if (firstOrder < secondOrder || (firstOrder === secondOrder && first.id.localeCompare(second.id) <= 0)) {
+    return { from: first, to: second };
+  }
+  return { from: second, to: first };
 }
 
 function aggregateLanguages(files: FileRecord[]): LanguageStats[] {

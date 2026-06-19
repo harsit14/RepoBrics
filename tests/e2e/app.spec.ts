@@ -7,9 +7,22 @@ test("demo world renders in the app shell", async ({ page }) => {
   await expect(page.getByText("demo/starter-app")).toBeVisible();
   await expect(page.getByTestId("world-canvas")).toBeVisible();
   await expect(page.getByText("4 buildings")).toBeVisible();
-  await expect(page.getByText("9 roads")).toBeVisible();
+  await expect(page.getByText("6 roads")).toBeVisible();
   await expect(page.getByText("3 links")).toBeVisible();
   await expect(page.getByText("5 landmarks")).toBeVisible();
+});
+
+test("file search focuses a matching building", async ({ page }) => {
+  await page.goto("/?demo=1");
+  await page.getByLabel("Search files").fill("api");
+  await page.getByRole("button", { name: /api\.ts/ }).click();
+  await expect(page.getByRole("heading", { name: "api.ts" })).toBeVisible();
+  await expect(page.getByText("src/api.ts").first()).toBeVisible();
+});
+
+test("minimap is visible for generated worlds", async ({ page }) => {
+  await page.goto("/?demo=1");
+  await expect(page.getByLabel("Repository minimap")).toBeVisible();
 });
 
 test("toolbar toggles update their pressed state", async ({ page }) => {
@@ -51,7 +64,7 @@ test("street view responds to keyboard walking", async ({ page, isMobile }) => {
   await expect(canvas).toBeVisible();
   await expect(canvas).toHaveAttribute("data-view-mode", "street");
   await expect.poll(async () => canvas.getAttribute("data-street-camera")).not.toBeNull();
-  await canvas.click({ position: { x: 20, y: 20 } });
+  await canvas.click({ position: { x: 20, y: 120 } });
   await page.waitForTimeout(250);
   const before = await canvas.getAttribute("data-street-camera");
   await page.keyboard.down("w");
@@ -85,7 +98,7 @@ test("fly mode responds to keyboard movement and climb", async ({ page, isMobile
   await expect(canvas).toBeVisible();
   await expect(canvas).toHaveAttribute("data-view-mode", "fly");
   await expect.poll(async () => canvas.getAttribute("data-fly-camera")).not.toBeNull();
-  await canvas.click({ position: { x: 20, y: 20 } });
+  await canvas.click({ position: { x: 20, y: 120 } });
   await page.waitForTimeout(250);
 
   const before = await canvas.getAttribute("data-fly-camera");

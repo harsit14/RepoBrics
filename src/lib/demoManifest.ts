@@ -17,7 +17,7 @@ export const demoManifest: WorldManifest = {
     "districts": 5,
     "buildings": 4,
     "connections": 3,
-    "roads": 9,
+    "roads": 6,
     "landmarks": 5,
     "totalLoc": 40,
     "totalBytes": 953,
@@ -438,114 +438,24 @@ export const demoManifest: WorldManifest = {
       "width": 1.25
     },
     {
-      "id": "road:root:src",
-      "name": "Root Baseplate Connector",
-      "kind": "connector",
-      "fromDistrictId": "root",
-      "toDistrictId": "src",
-      "points": [
-        {
-          "x": 6.4,
-          "y": 0.06,
-          "z": -7.25
-        },
-        {
-          "x": 0.2,
-          "y": 0.06,
-          "z": -7.25
-        },
-        {
-          "x": 0.2,
-          "y": 0.06,
-          "z": -7.15
-        },
-        {
-          "x": -6,
-          "y": 0.06,
-          "z": -7.15
-        }
-      ],
-      "width": 1.05
-    },
-    {
-      "id": "road:src:.github",
-      "name": "Src Connector",
+      "id": "road:src:tests",
+      "name": "Src to Tests Route",
       "kind": "connector",
       "fromDistrictId": "src",
-      "toDistrictId": ".github",
-      "points": [
-        {
-          "x": -6,
-          "y": 0.06,
-          "z": -7.15
-        },
-        {
-          "x": -6.65,
-          "y": 0.06,
-          "z": -7.15
-        },
-        {
-          "x": -6.65,
-          "y": 0.06,
-          "z": 5.55
-        },
-        {
-          "x": -7.3,
-          "y": 0.06,
-          "z": 5.55
-        }
-      ],
-      "width": 1.05
-    },
-    {
-      "id": "road:.github:docs",
-      "name": ".Github Connector",
-      "kind": "connector",
-      "fromDistrictId": ".github",
-      "toDistrictId": "docs",
-      "points": [
-        {
-          "x": -7.3,
-          "y": 0.06,
-          "z": 5.55
-        },
-        {
-          "x": -2.2,
-          "y": 0.06,
-          "z": 5.55
-        },
-        {
-          "x": -2.2,
-          "y": 0.06,
-          "z": 5.55
-        },
-        {
-          "x": 2.9,
-          "y": 0.06,
-          "z": 5.55
-        }
-      ],
-      "width": 1.05
-    },
-    {
-      "id": "road:docs:tests",
-      "name": "Docs Connector",
-      "kind": "connector",
-      "fromDistrictId": "docs",
       "toDistrictId": "tests",
       "points": [
         {
-          "x": 2.9,
+          "x": -6,
           "y": 0.06,
-          "z": 5.55
+          "z": -7.15
         },
         {
-          "x": -2.2,
+          "x": -6.65,
           "y": 0.06,
-          "z": 5.55
+          "z": -7.15
         },
         {
-          "x": -2.2,
+          "x": -6.65,
           "y": 0.06,
           "z": 18.25
         },

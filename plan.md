@@ -35,6 +35,8 @@ RepoBricks should stay distinct from Agentopolis by focusing on semantic code co
 
 See `docs/analysis-followup-plan.md` for the analysis-driven roadmap. The active pass focuses on semantic visual upgrades: broader language coverage, depth-aware building height, role-specific roofs, TODO scaffolding, symbol accents, animated dependency pulses, and more visible studs.
 
+The second follow-up pass adds navigation and signal cleanup: file search with click-to-focus, a lightweight minimap, and connector roads generated only from cross-district repo-local imports.
+
 ## Public Interfaces
 
 - `POST /api/analyze`
