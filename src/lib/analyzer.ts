@@ -369,7 +369,9 @@ function buildBuildings(layout: DistrictLayout[], repo: RepoInfo): Building[] {
     district.files.forEach((file, index) => {
       const col = index % cols;
       const row = Math.floor(index / cols);
-      const height = clamp(0.55 + Math.log10(file.loc + 1) * 1.2, 0.7, 7.2);
+      const folderDepth = Math.max(0, file.path.split("/").length - 2);
+      const nestingBonus = clamp(folderDepth * 0.22, 0, 1.5);
+      const height = clamp(0.55 + Math.log10(file.loc + 1) * 1.2 + nestingBonus, 0.7, 7.8);
       const footprint = clamp(0.8 + Math.log2(file.bytes + 1) / 13, 0.8, CELL * 0.72);
       const localX = (col + 0.5 - cols / 2) * CELL;
       const localZ = gridCenterZ + (row + 0.5 - rows / 2) * CELL;

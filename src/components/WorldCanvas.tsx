@@ -107,8 +107,8 @@ function WorldScene({ manifest }: { manifest: WorldManifest }) {
   );
 }
 
-const STUD_RADIUS = 0.16;
-const STUD_HEIGHT = 0.2;
+const STUD_RADIUS = 0.2;
+const STUD_HEIGHT = 0.28;
 
 type StudInstance = { x: number; y: number; z: number; r: number; color: string };
 
@@ -674,7 +674,7 @@ function DistrictBase({ district }: { district: District }) {
         <meshStandardMaterial color={tint(district.color, 0.6)} roughness={0.48} metalness={0} envMapIntensity={0.4} emissive="#ffffff" emissiveIntensity={selected ? 0.16 : 0} />
       </mesh>
       <SceneLabel position={{ x: 0, y: 0.58, z: -district.dimensions.depth / 2 + 0.72 }} tone="sector">
-        {district.name}
+        {districtLabel(district.name)}
       </SceneLabel>
     </group>
   );
@@ -751,6 +751,7 @@ function BuildingMesh({ building }: { building: Building }) {
   const glow = selected ? 0.26 : hovered ? 0.13 : 0;
   const accent = building.complexity >= 8 ? "#eb5757" : building.complexity >= 5 ? "#f2994a" : "#27ae60";
   const windowRows = useMemo(() => buildingWindowRows(building.dimensions.height), [building.dimensions.height]);
+  const profile = useMemo(() => buildingProfile(building), [building]);
 
   return (
     <group
@@ -791,6 +792,9 @@ function BuildingMesh({ building }: { building: Building }) {
           </mesh>
         </group>
       ) : null}
+      <BuildingRoof building={building} profile={profile} selected={selected} hovered={hovered} />
+      {building.symbols >= 10 ? <SymbolStack building={building} color={accent} /> : null}
+      {building.todos > 0 ? <TodoScaffold building={building} todos={building.todos} /> : null}
       {highlightComplexity ? (
         <mesh position={[0, building.dimensions.height / 2 + 0.025, 0]}>
           <boxGeometry args={[building.dimensions.width * 0.92, 0.06, building.dimensions.depth * 0.92]} />
@@ -798,6 +802,139 @@ function BuildingMesh({ building }: { building: Building }) {
         </mesh>
       ) : null}
       {selected || hovered ? <SceneLabel position={{ x: 0, y: building.dimensions.height / 2 + 0.58, z: 0 }}>{building.name}</SceneLabel> : null}
+    </group>
+  );
+}
+
+type BuildingProfile = {
+  role: "entry" | "test" | "config" | "style" | "data" | "utility" | "source";
+  roofColor: string;
+};
+
+function BuildingRoof({
+  building,
+  profile,
+  selected,
+  hovered
+}: {
+  building: Building;
+  profile: BuildingProfile;
+  selected: boolean;
+  hovered: boolean;
+}) {
+  const top = building.dimensions.height / 2;
+  const roofColor = selected || hovered ? tint(profile.roofColor, 0.14) : profile.roofColor;
+  const shine = selected ? 0.22 : hovered ? 0.12 : 0.04;
+
+  if (profile.role === "entry") {
+    return (
+      <mesh castShadow position={[0, top + 0.18, 0]} scale={[1, 0.46, 1]}>
+        <sphereGeometry args={[Math.min(building.dimensions.width, building.dimensions.depth) * 0.44, 22, 12]} />
+        <meshStandardMaterial color={roofColor} roughness={0.28} metalness={0} envMapIntensity={0.9} emissive="#fff7cc" emissiveIntensity={shine} />
+      </mesh>
+    );
+  }
+
+  if (profile.role === "config") {
+    return (
+      <mesh castShadow position={[0, top + 0.22, 0]} rotation={[0, Math.PI / 4, 0]}>
+        <coneGeometry args={[Math.min(building.dimensions.width, building.dimensions.depth) * 0.62, 0.44, 4]} />
+        <meshStandardMaterial color={roofColor} roughness={0.32} metalness={0} envMapIntensity={0.8} emissive="#ffffff" emissiveIntensity={shine} />
+      </mesh>
+    );
+  }
+
+  if (profile.role === "test") {
+    return (
+      <group position={[0, top + 0.12, 0]}>
+        <mesh castShadow>
+          <boxGeometry args={[building.dimensions.width * 0.92, 0.14, building.dimensions.depth * 0.3]} />
+          <meshStandardMaterial color={roofColor} roughness={0.34} metalness={0} envMapIntensity={0.75} emissive="#dcfce7" emissiveIntensity={shine} />
+        </mesh>
+        <mesh castShadow>
+          <boxGeometry args={[building.dimensions.width * 0.3, 0.16, building.dimensions.depth * 0.92]} />
+          <meshStandardMaterial color="#f8fafc" roughness={0.3} metalness={0} envMapIntensity={0.75} />
+        </mesh>
+      </group>
+    );
+  }
+
+  if (profile.role === "data") {
+    return (
+      <mesh castShadow position={[0, top + 0.1, 0]}>
+        <cylinderGeometry args={[building.dimensions.width * 0.42, building.dimensions.width * 0.42, 0.18, 18]} />
+        <meshStandardMaterial color={roofColor} roughness={0.3} metalness={0} envMapIntensity={0.85} emissive="#ffffff" emissiveIntensity={shine} />
+      </mesh>
+    );
+  }
+
+  if (profile.role === "style") {
+    return (
+      <mesh castShadow position={[0, top + 0.2, 0]}>
+        <coneGeometry args={[Math.min(building.dimensions.width, building.dimensions.depth) * 0.54, 0.4, 3]} />
+        <meshStandardMaterial color={roofColor} roughness={0.26} metalness={0} envMapIntensity={0.95} emissive="#e0f2fe" emissiveIntensity={shine} />
+      </mesh>
+    );
+  }
+
+  return (
+    <mesh castShadow position={[0, top + 0.08, 0]}>
+      <boxGeometry args={[building.dimensions.width * 0.78, 0.14, building.dimensions.depth * 0.78]} />
+      <meshStandardMaterial color={roofColor} roughness={0.32} metalness={0} envMapIntensity={0.75} emissive="#ffffff" emissiveIntensity={shine} />
+    </mesh>
+  );
+}
+
+function SymbolStack({ building, color }: { building: Building; color: string }) {
+  const top = building.dimensions.height / 2;
+  const plates = Math.min(4, Math.max(2, Math.ceil(building.symbols / 18)));
+
+  return (
+    <group position={[-building.dimensions.width * 0.3, top + 0.12, -building.dimensions.depth * 0.3]}>
+      {Array.from({ length: plates }, (_, index) => (
+        <mesh key={index} castShadow position={[0, index * 0.09, 0]}>
+          <boxGeometry args={[building.dimensions.width * 0.34, 0.055, building.dimensions.depth * 0.34]} />
+          <meshStandardMaterial color={index % 2 === 0 ? color : "#f8fafc"} roughness={0.3} metalness={0} envMapIntensity={0.85} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function TodoScaffold({ building, todos }: { building: Building; todos: number }) {
+  const width = building.dimensions.width + 0.42;
+  const depth = building.dimensions.depth + 0.42;
+  const height = building.dimensions.height + 0.58;
+  const top = building.dimensions.height / 2 + 0.32;
+  const glow = clamp(todos * 0.05, 0.12, 0.36);
+  const materialProps = { color: "#f59e0b", roughness: 0.34, metalness: 0.05, envMapIntensity: 0.75, emissive: "#f59e0b", emissiveIntensity: glow };
+
+  return (
+    <group>
+      {[-1, 1].flatMap((x) =>
+        [-1, 1].map((z) => (
+          <mesh key={`${x}:${z}`} castShadow position={[(width / 2) * x, 0.08, (depth / 2) * z]}>
+            <boxGeometry args={[0.055, height, 0.055]} />
+            <meshStandardMaterial {...materialProps} />
+          </mesh>
+        ))
+      )}
+      {[-1, 1].map((z) => (
+        <mesh key={`top-x:${z}`} castShadow position={[0, top, (depth / 2) * z]}>
+          <boxGeometry args={[width, 0.055, 0.055]} />
+          <meshStandardMaterial {...materialProps} />
+        </mesh>
+      ))}
+      {[-1, 1].map((x) => (
+        <mesh key={`top-z:${x}`} castShadow position={[(width / 2) * x, top, 0]}>
+          <boxGeometry args={[0.055, 0.055, depth]} />
+          <meshStandardMaterial {...materialProps} />
+        </mesh>
+      ))}
+      <mesh castShadow position={[0, -building.dimensions.height * 0.1, depth / 2]}>
+        <boxGeometry args={[width * 0.82, 0.045, 0.045]} />
+        <meshStandardMaterial {...materialProps} />
+      </mesh>
     </group>
   );
 }
@@ -855,9 +992,12 @@ function LandmarkMesh({ landmark }: { landmark: Landmark }) {
 }
 
 function ConnectionLayer({ manifest }: { manifest: WorldManifest }) {
-  const positions = useMemo(() => {
+  const flowRef = useRef<THREE.InstancedMesh>(null);
+  const pulseObject = useMemo(() => new THREE.Object3D(), []);
+  const { positions, flowPaths } = useMemo(() => {
     const buildingById = new Map(manifest.buildings.map((building) => [building.id, building]));
     const values: number[] = [];
+    const paths: Array<{ from: Vec3; mid: Vec3; to: Vec3 }> = [];
 
     for (const connection of manifest.connections) {
       const from = buildingById.get(connection.from);
@@ -884,35 +1024,64 @@ function ConnectionLayer({ manifest }: { manifest: WorldManifest }) {
 
       values.push(fromPoint.x, fromPoint.y, fromPoint.z, midPoint.x, midPoint.y, midPoint.z);
       values.push(midPoint.x, midPoint.y, midPoint.z, toPoint.x, toPoint.y, toPoint.z);
+      paths.push({ from: fromPoint, mid: midPoint, to: toPoint });
     }
 
-    return new Float32Array(values);
+    return { positions: new Float32Array(values), flowPaths: paths.slice(0, 240) };
   }, [manifest.buildings, manifest.connections]);
+
+  useFrame((state) => {
+    const mesh = flowRef.current;
+    if (!mesh || flowPaths.length === 0) {
+      return;
+    }
+
+    const elapsed = state.clock.elapsedTime;
+    flowPaths.forEach((path, index) => {
+      const t = (elapsed * 0.22 + index * 0.071) % 1;
+      const point = pointOnConnectionPath(path, t);
+      const scale = 0.08 + Math.sin((t + index * 0.17) * Math.PI) * 0.035;
+      pulseObject.position.set(point.x, point.y, point.z);
+      pulseObject.scale.setScalar(scale);
+      pulseObject.updateMatrix();
+      mesh.setMatrixAt(index, pulseObject.matrix);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+  });
 
   if (positions.length === 0) {
     return null;
   }
 
   return (
-    <lineSegments renderOrder={1}>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[positions, 3]} />
-      </bufferGeometry>
-      <lineBasicMaterial color="#2563eb" transparent opacity={0.62} depthWrite={false} />
-    </lineSegments>
+    <>
+      <lineSegments renderOrder={1}>
+        <bufferGeometry>
+          <bufferAttribute attach="attributes-position" args={[positions, 3]} />
+        </bufferGeometry>
+        <lineBasicMaterial color="#2563eb" transparent opacity={0.52} depthWrite={false} />
+      </lineSegments>
+      {flowPaths.length > 0 ? (
+        <instancedMesh ref={flowRef} args={[undefined, undefined, flowPaths.length]} renderOrder={2}>
+          <sphereGeometry args={[1, 12, 8]} />
+          <meshStandardMaterial color="#38bdf8" emissive="#2563eb" emissiveIntensity={1.25} roughness={0.2} transparent opacity={0.86} depthWrite={false} />
+        </instancedMesh>
+      ) : null}
+    </>
   );
 }
 
 function SceneLabel({ children, position, tone = "default" }: { children: string; position: Vec3; tone?: "default" | "road" | "sector" }) {
   const className =
     tone === "sector"
-      ? "origin-center rounded border border-slate-300 bg-white/95 px-2 py-1 text-center text-[9px] font-semibold leading-tight text-slate-950 shadow-sm sm:text-[11px]"
+      ? "origin-center max-w-24 rounded border border-slate-300 bg-white/95 px-1.5 py-0.5 text-center text-[8px] font-semibold leading-tight text-slate-950 shadow-sm sm:text-[10px]"
       : tone === "road"
         ? "origin-center rounded border border-slate-400 bg-slate-900/88 px-2 py-0.5 text-center text-[8px] font-medium leading-tight text-white shadow-sm sm:text-[10px]"
         : "origin-center rounded border border-slate-200 bg-white/95 px-2 py-1 text-center text-[9px] font-medium leading-tight text-slate-950 shadow-sm sm:text-[10px]";
+  const distanceFactor = tone === "sector" ? 10 : tone === "road" ? 11 : 12;
 
   return (
-    <Html center distanceFactor={14} position={[position.x, position.y, position.z]} style={{ pointerEvents: "none", userSelect: "none" }}>
+    <Html center distanceFactor={distanceFactor} position={[position.x, position.y, position.z]} style={{ pointerEvents: "none", userSelect: "none" }}>
       <div className={className}>{children}</div>
     </Html>
   );
@@ -987,6 +1156,65 @@ function buildingWindowRows(height: number): number[] {
   }
 
   return Array.from({ length: count }, (_, index) => roundTo(bottom + ((top - bottom) * index) / (count - 1), 2));
+}
+
+function buildingProfile(building: Building): BuildingProfile {
+  const lowerPath = building.path.toLowerCase();
+  const name = lowerPath.split("/").pop() ?? lowerPath;
+  const language = building.language.toLowerCase();
+
+  if (
+    /(^|\/)(index|main|app|page|layout|route|server|worker|cli)\.[cm]?[jt]sx?$/.test(lowerPath) ||
+    ["main.py", "__main__.py", "app.py", "server.py"].includes(name)
+  ) {
+    return { role: "entry", roofColor: "#facc15" };
+  }
+
+  if (/(\.test\.|\.spec\.|__tests__|\/tests?\/)/.test(lowerPath)) {
+    return { role: "test", roofColor: "#22c55e" };
+  }
+
+  if (
+    /(^|\/)(package|tsconfig|vite\.config|next\.config|eslint\.config|tailwind\.config|postcss\.config|vitest\.config|playwright\.config|webpack\.config|rollup\.config|babel\.config)/.test(
+      lowerPath
+    ) ||
+    language.includes("manifest") ||
+    language.includes("docker")
+  ) {
+    return { role: "config", roofColor: "#ef4444" };
+  }
+
+  if (
+    language.includes("css") ||
+    language.includes("svg") ||
+    language.includes("mdx") ||
+    language.includes("markdown") ||
+    /\.(png|jpe?g|gif|webp|avif|ico|woff2?|ttf)$/.test(lowerPath)
+  ) {
+    return { role: "style", roofColor: "#38bdf8" };
+  }
+
+  if (
+    language.includes("json") ||
+    language.includes("yaml") ||
+    language.includes("toml") ||
+    language.includes("sql") ||
+    language.includes("graphql") ||
+    language.includes("prisma") ||
+    language.includes("xml")
+  ) {
+    return { role: "data", roofColor: "#f59e0b" };
+  }
+
+  if (/(^|\/)(utils?|helpers?|hooks?|services?|lib)\//.test(lowerPath) || /(util|helper|client|service|adapter|parser)/.test(name)) {
+    return { role: "utility", roofColor: "#94a3b8" };
+  }
+
+  return { role: "source", roofColor: tint(building.color, building.imports > 4 ? 0.08 : 0.24) };
+}
+
+function districtLabel(name: string): string {
+  return name.replace(/\s+Baseplate$/i, "");
 }
 
 function roundTo(value: number, precision: number): number {
@@ -1081,6 +1309,19 @@ function roadMidpoint(road: Road): Vec3 {
     walked += segment;
   }
   return road.points.at(-1) ?? road.points[0];
+}
+
+function pointOnConnectionPath(path: { from: Vec3; mid: Vec3; to: Vec3 }, t: number): Vec3 {
+  const firstHalf = t < 0.5;
+  const start = firstHalf ? path.from : path.mid;
+  const end = firstHalf ? path.mid : path.to;
+  const localT = firstHalf ? t * 2 : (t - 0.5) * 2;
+
+  return {
+    x: start.x + (end.x - start.x) * localT,
+    y: start.y + (end.y - start.y) * localT,
+    z: start.z + (end.z - start.z) * localT
+  };
 }
 
 function clamp(value: number, min: number, max: number): number {

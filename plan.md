@@ -31,6 +31,10 @@ RepoBricks should stay distinct from Agentopolis by focusing on semantic code co
 7. Add fixture-based unit tests and Playwright smoke tests that avoid GitHub network by default.
 8. Document setup, scripts, architecture, MVP limits, and future work in `README.md`.
 
+## Current Follow-Up Pass
+
+See `docs/analysis-followup-plan.md` for the analysis-driven roadmap. The active pass focuses on semantic visual upgrades: broader language coverage, depth-aware building height, role-specific roofs, TODO scaffolding, symbol accents, animated dependency pulses, and more visible studs.
+
 ## Public Interfaces
 
 - `POST /api/analyze`

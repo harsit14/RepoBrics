@@ -29,6 +29,7 @@ test("canvas output is nonblank", async ({ page }) => {
   await page.goto("/?demo=1");
   const canvas = page.locator("canvas").first();
   await expect(canvas).toBeVisible();
+  await expect(page.getByText("Src")).toBeVisible();
   await page.waitForFunction(() => {
     const element = document.querySelector("canvas");
     return Boolean(element && element.width > 0 && element.height > 0);
@@ -36,7 +37,9 @@ test("canvas output is nonblank", async ({ page }) => {
   await page.waitForTimeout(500);
 
   const before = await canvas.screenshot();
-  expect(uniqueColorCount(before)).toBeGreaterThan(20);
+  const stats = canvasPixelStats(before);
+  expect(stats.uniqueColors).toBeGreaterThan(20);
+  expect(stats.scenePixels).toBeGreaterThan(40);
 });
 
 test("street view responds to keyboard walking", async ({ page, isMobile }) => {
@@ -111,16 +114,28 @@ function parseFlyCamera(value: string | null): { x: number; y: number; z: number
   return { x, y, z };
 }
 
-function uniqueColorCount(buffer: Buffer): number {
+function canvasPixelStats(buffer: Buffer): { uniqueColors: number; scenePixels: number } {
   const png = PNG.sync.read(buffer);
   const colors = new Set<string>();
+  let scenePixels = 0;
 
   for (let y = 0; y < png.height; y += 8) {
     for (let x = 0; x < png.width; x += 8) {
       const offset = (png.width * y + x) * 4;
-      colors.add(`${png.data[offset]},${png.data[offset + 1]},${png.data[offset + 2]}`);
+      const red = png.data[offset];
+      const green = png.data[offset + 1];
+      const blue = png.data[offset + 2];
+      const max = Math.max(red, green, blue);
+      const min = Math.min(red, green, blue);
+      const saturation = max === 0 ? 0 : (max - min) / max;
+      const brightness = max / 255;
+
+      colors.add(`${red},${green},${blue}`);
+      if ((saturation > 0.16 && brightness < 0.97) || brightness < 0.76) {
+        scenePixels += 1;
+      }
     }
   }
 
-  return colors.size;
+  return { uniqueColors: colors.size, scenePixels };
 }

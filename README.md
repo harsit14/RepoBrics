@@ -11,7 +11,7 @@ Paste a repo URL, analyze its tracked files, and walk, fly, or orbit through a g
 - Public GitHub repo intake through `POST /api/analyze`
 - Deterministic repo-to-world manifest for repeatable layouts
 - Brick-style districts, file buildings, roads, landmarks, studs, and dependency links
-- Language colors, complexity highlights, dependency toggles, and inspector details
+- Language colors, role-specific roofs, TODO scaffolds, symbol stacks, dependency pulses, and inspector details
 - Overview orbit mode, street-level walking mode, and free-flight mode
 - Local fixture tests so CI can run without GitHub network access
 
